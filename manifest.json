@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "kintone Dev Tools(仮)",
-  "version": "1.0",
+  "name": "Devkinox",
+  "version": "1.0.0.0",
   "description": "kintone開発者向けツール集",
   "permissions": ["activeTab", "scripting"],
   "host_permissions": ["*://*.cybozu.com/*", "*://*.kintone.com/*"],
