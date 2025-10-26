@@ -1,5 +1,9 @@
 // コンテンツスクリプト: フィールドコード変更
 
+// todo:計算式の更新は未対応
+// バリデーションエラー箇所を赤くする
+// ストレージに設定保存する。
+
 // kintoneの型定義
 declare const kintone: any;
 
@@ -35,19 +39,34 @@ declare const kintone: any;
   function sanitizeFieldCode(label: string): string {
     let sanitized = label;
     
-    // 先頭の数字を削除（先頭に数字は使用不可）
-    sanitized = sanitized.replace(/^[0-9]+/, '');
+    // 設定できない文字列を変換
+    const forbiddenStrings = {
+      'ステータス': 'status',
+      '作業者': 'worker',
+      'カテゴリー': 'category',
+      '__ROOT__': 'root',
+      'not': 'not_field'
+    };
+    
+    if (forbiddenStrings[sanitized as keyof typeof forbiddenStrings]) {
+      sanitized = forbiddenStrings[sanitized as keyof typeof forbiddenStrings];
+    }
+    
+    // 先頭または末尾のスペースを削除
+    sanitized = sanitized.trim();
+    
+    // それ以外のスペースを_に置換
+    sanitized = sanitized.replace(/ /g, '_');
     
     // 使用できない記号を_に置換
     const invalidChars = [
-      // 括弧類
+      // 括弧類（全角・半角）
       '(', ')', '「', '」', '[', ']', '【', '】', '{', '}',
-      // 半角記号（使用可能な記号以外）
-      '@', '+', '~', '＃', '#', '%', '&', "'", '=', '|', '^', '*', ';', ':', '?',
-      // スペース
-      ' ', '　',
-      // その他の使用できない文字
-      '!', '"', '$', '(', ')', ',', '.', '/', ':', '<', '>', '?', '[', '\\', ']', '`', '{', '}', '|'
+      '（', '）', '［', '］', '｛', '｝',
+      // 半角記号
+      '@', '+', '~', '＃', '#', '%', '&', "'", '=', '|', '^', '*', ';', ':', '?',' ',
+      // 全角記号
+      '＠', '＋', '～', '％', '＆', '＝', '｜', '＾', '＊', '；', '：', '？','　'
     ];
     
     // 各文字を_に置換
@@ -55,17 +74,14 @@ declare const kintone: any;
       sanitized = sanitized.replace(new RegExp(char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '_');
     });
     
-    // 先頭と末尾の_を削除
-    sanitized = sanitized.replace(/^_+|_+$/g, '');
+    // 先頭が半角数字の場合は_を先頭に付与
+    if (/^[0-9]/.test(sanitized)) {
+      sanitized = '_' + sanitized;
+    }
     
     // 空文字列の場合はデフォルト値を設定
     if (sanitized === '') {
       sanitized = 'field_' + Date.now();
-    }
-    
-    // 先頭が数字の場合はプレフィックスを追加
-    if (/^[0-9]/.test(sanitized)) {
-      sanitized = 'field_' + sanitized;
     }
     
     return sanitized;
@@ -145,102 +161,30 @@ declare const kintone: any;
         fields: productionFields,
         previewFields: previewFields
       };
-    } catch (error) {
-      console.error("[Kintone Dev Tools] Failed to get app info:", error);
-      return null;
+  } catch (error) {
+    console.error("[Kintone Dev Tools] Failed to get app info:", error);
+    
+    // ネットワークエラーの場合の詳細なメッセージ
+    let errorMessage = "アプリ情報の取得に失敗しました。";
+    
+    if (error && typeof error === 'object') {
+      const errorStr = error.toString();
+      if (errorStr.includes('ERR_CONNECTION_RESET') || errorStr.includes('ERR_NETWORK')) {
+        errorMessage = "ネットワークエラーが発生しました。\nインターネット接続を確認し、ページを再読み込みしてから再度お試しください。";
+      } else if (errorStr.includes('ERR_TIMED_OUT')) {
+        errorMessage = "タイムアウトエラーが発生しました。\nしばらく時間をおいてから再度お試しください。";
+      } else if (errorStr.includes('403') || errorStr.includes('401')) {
+        errorMessage = "アクセス権限がありません。\nこのアプリにアクセスする権限があることを確認してください。";
+      } else if (errorStr.includes('404')) {
+        errorMessage = "アプリが見つかりません。\n正しいアプリページにいることを確認してください。";
+      }
     }
+    
+    alert(errorMessage);
+    return null;
+  }
   }
 
-  // エラーダイアログを表示する関数（グローバル）
-  const showErrorDialog = (error: any) => {
-    const errorMessage = error?.message || error?.toString() || "不明なエラー";
-    const stackTrace = error?.stack || "スタックトレースが利用できません";
-    
-    const errorDialogHTML = `
-      <div id="errorDialog" style="
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        z-index: 10001;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      ">
-        <div style="
-          background: white;
-          border-radius: 8px;
-          padding: 20px;
-          max-width: 90%;
-          max-height: 90%;
-          overflow: auto;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        ">
-          <h3 style="margin-top: 0; color: #dc3545;">エラーが発生しました</h3>
-          <div style="margin: 15px 0;">
-            <h4 style="color: #333; margin-bottom: 10px;">エラーメッセージ:</h4>
-            <div style="
-              background-color: #f8f9fa;
-              border: 1px solid #dee2e6;
-              border-radius: 4px;
-              padding: 10px;
-              font-family: monospace;
-              font-size: 14px;
-              white-space: pre-wrap;
-              word-break: break-all;
-            ">${errorMessage}</div>
-          </div>
-          <div style="margin: 15px 0;">
-            <h4 style="color: #333; margin-bottom: 10px;">スタックトレース:</h4>
-            <div style="
-              background-color: #f8f9fa;
-              border: 1px solid #dee2e6;
-              border-radius: 4px;
-              padding: 10px;
-              font-family: monospace;
-              font-size: 12px;
-              white-space: pre-wrap;
-              word-break: break-all;
-              max-height: 300px;
-              overflow-y: auto;
-            ">${stackTrace}</div>
-          </div>
-          <div style="text-align: right; margin-top: 20px;">
-            <button id="closeErrorBtn" style="
-              background-color: #6c757d;
-              color: white;
-              border: none;
-              padding: 10px 20px;
-              border-radius: 4px;
-              cursor: pointer;
-            ">閉じる</button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    document.body.insertAdjacentHTML('beforeend', errorDialogHTML);
-
-    const errorDialog = document.getElementById('errorDialog');
-    const closeErrorBtn = document.getElementById('closeErrorBtn');
-
-    const closeErrorDialog = () => {
-      if (errorDialog) {
-        errorDialog.remove();
-      }
-    };
-
-    closeErrorBtn?.addEventListener('click', closeErrorDialog);
-
-    // 背景クリックで閉じる
-    errorDialog?.addEventListener('click', (e) => {
-      if (e.target === errorDialog) {
-        closeErrorDialog();
-      }
-    });
-  };
 
   // フィールドコード変更の実行
   async function changeFieldCodes() {
@@ -279,76 +223,34 @@ declare const kintone: any;
         }
       }
 
-      // 各フィールドのコードをラベルベースで変更
-      const usedCodes = new Set<string>();
-      const existingCodes = new Set<string>(Object.keys(fields));
-      const labelToCodeMap = new Map<string, string[]>();
+// 各フィールドのコードをラベルベースで変更
+    for (const [currentCode, field] of Object.entries(fields)) {
+      // システムフィールドを除外
+      const systemFields = [
+        'レコード番号', '作成者', '作成日時', '更新者', '更新日時','作業者','ステータス','カテゴリー',
+        'Record_number', 'Created_by', 'Created_datetime', 'Updated_by', 'Updated_datetime'
+      ];
       
-      // まず、ラベルごとにフィールドコードをグループ化
-      for (const [currentCode, field] of Object.entries(fields)) {
-        const sanitizedLabel = sanitizeFieldCode(field.label);
-        if (!labelToCodeMap.has(sanitizedLabel)) {
-          labelToCodeMap.set(sanitizedLabel, []);
-        }
-        labelToCodeMap.get(sanitizedLabel)!.push(currentCode);
+      if (systemFields.includes(field.label) || systemFields.includes(currentCode)) {
+        continue;
       }
       
-      // 衝突がある場合のみ変更を検討
-      for (const [sanitizedLabel, fieldCodes] of labelToCodeMap.entries()) {
-        // 同じラベルから生成されるフィールドコードが複数ある場合のみ処理
-        if (fieldCodes.length > 1) {
-          console.log(`[Kintone Dev Tools] Found collision for label "${sanitizedLabel}":`, fieldCodes);
-          
-          // 各フィールドコードに対して新しいコードを生成
-          for (const currentCode of fieldCodes) {
-            const field = fields[currentCode];
-            let newCode = sanitizedLabel;
-            
-            // 既存のフィールドコードと同じ場合は変更しない
-            if (currentCode === newCode) {
-              usedCodes.add(newCode);
-              continue;
-            }
-            
-            // 同じフィールドコードが既に使用されている場合は連番を付ける
-            if (usedCodes.has(newCode) || existingCodes.has(newCode)) {
-              // 空いている数字を探す
-              let counter = 1;
-              let numberedCode = `${newCode}_${counter}`;
-              
-              while (usedCodes.has(numberedCode) || existingCodes.has(numberedCode)) {
-                counter++;
-                numberedCode = `${newCode}_${counter}`;
-              }
-              
-              newCode = numberedCode;
-            }
-            
-            // 使用済みコードに追加
-            usedCodes.add(newCode);
-            
-            // 現在のコードと異なる場合のみ変更対象とする
-            if (currentCode !== newCode && newCode.length > 0) {
-              changes.push({
-                oldCode: currentCode,
-                newCode: newCode,
-                label: field.label
-              });
-            }
-          }
-        }
+      const newCode = sanitizeFieldCode(field.label);
+      
+      // 全てのフィールドを変更対象とする
+      if (newCode.length > 0) {
+        changes.push({
+          oldCode: currentCode,
+          newCode: newCode,
+          label: field.label
+        });
       }
+    }
 
       // デバッグ用：フィールドコードの確認
       console.log("[Kintone Dev Tools] Available field codes:", Object.keys(fields));
       console.log("[Kintone Dev Tools] Changes to be made:", changes);
-      console.log("[Kintone Dev Tools] Used codes during generation:", Array.from(usedCodes));
       
-      // 連番が付いたフィールドコードの確認
-      const numberedChanges = changes.filter(change => change.newCode.includes('_'));
-      if (numberedChanges.length > 0) {
-        console.log("[Kintone Dev Tools] Fields with numbered codes:", numberedChanges);
-      }
 
       if (changes.length === 0) {
         alert("変更が必要なフィールドコードはありません。");
@@ -375,32 +277,67 @@ declare const kintone: any;
             background: white;
             border-radius: 8px;
             padding: 20px;
-            max-width: 80%;
-            max-height: 80%;
+            width: 95%;
+            height: 90%;
             overflow: auto;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
           ">
-            <h3 style="margin-top: 0; color: #333;">フィールドコード変更の確認</h3>
-            <p>以下のフィールドコードを変更しますか？</p>
+            <h2 style="margin-top: 0; color: #333;">フィールドコード変更設定</h2>
+            <p>ラベルの文字をフィールドコードに設定する機能です。<br>
+            現バージョンはアプリ作成直後での使用を想定しています。</p>            
+            <div style="margin: 15px 0; padding: 10px; background-color: #f8f9fa; border-radius: 4px;">
+              <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #666;">
+                プレフィックス
+              </label>
+              <input type="text" 
+                     id="prefixInput" 
+                     placeholder="次期バージョンで対応予定" 
+                     disabled
+                     style="
+                       width: 200px;
+                       padding: 6px;
+                       border: 1px solid #ccc;
+                       border-radius: 4px;
+                       background-color: #f5f5f5;
+                       color: #999;
+                       font-size: 14px;
+                     ">
+            </div>
             <table style="
               width: 100%;
               border-collapse: collapse;
               margin: 15px 0;
               font-size: 14px;
+              table-layout: fixed;
             ">
               <thead>
                 <tr style="background-color: #f5f5f5;">
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">フィールド名</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">現在のコード</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">新しいコード</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; width: 30%;">ラベル</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; width: 30%;">現在のフィールドコード</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; width: 40%;">新しいフィールドコード</th>
                 </tr>
               </thead>
               <tbody>
-                ${changes.map(change => `
+                ${changes.map((change, index) => `
                   <tr>
                     <td style="border: 1px solid #ddd; padding: 8px;">${change.label}</td>
                     <td style="border: 1px solid #ddd; padding: 8px; font-family: monospace; background-color: #f9f9f9;">${change.oldCode}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; font-family: monospace; background-color: #e8f5e8;">${change.newCode}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">
+                      <input type="text" 
+                             id="newCode_${index}" 
+                             value="${change.newCode}" 
+                             style="
+                               width: calc(100% - 8px);
+                               padding: 4px;
+                               border: 1px solid #ccc;
+                               border-radius: 4px;
+                               font-family: monospace;
+                               font-size: 14px;
+                               box-sizing: border-box;
+                             "
+                             data-original-code="${change.oldCode}"
+                             data-label="${change.label}">
+                    </td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -444,8 +381,24 @@ declare const kintone: any;
 
       cancelBtn?.addEventListener('click', closeDialog);
       confirmBtn?.addEventListener('click', () => {
+        // 編集されたフィールドコードを取得
+        const updatedChanges = changes.map((change, index) => {
+          const input = document.getElementById(`newCode_${index}`) as HTMLInputElement;
+          return {
+            ...change,
+            newCode: input.value.trim()
+          };
+        }).filter(change => change.newCode.length > 0);
+
+        // バリデーション実行
+        const validationResult = validateFieldCodes(updatedChanges, changes);
+        if (!validationResult.isValid) {
+          showValidationErrors(validationResult.errors);
+          return;
+        }
+
         closeDialog();
-        executeFieldCodeChanges();
+        executeFieldCodeChanges(updatedChanges);
       });
 
       // 背景クリックで閉じる
@@ -456,9 +409,74 @@ declare const kintone: any;
       });
     };
 
+    // バリデーション関数
+    function validateFieldCodes(updatedChanges: any[], allChanges: any[]) {
+      const errors: string[] = [];
+      const usedCodes = new Set<string>();
+      const existingCodes = new Set<string>(Object.keys(appInfo.fields));
+
+      // 使用できない文字のパターン（Kintone公式ヘルプに準拠）
+      const invalidCharPattern = /[()「」[\]【】{}@+~＃#%&'=|^*;:?]/;
+      const startsWithNumberPattern = /^[0-9]/;
+      
+      // 設定できない文字列
+      const forbiddenStrings = ['ステータス', '作業者', 'カテゴリー', '__ROOT__', 'not'];
+
+      for (const change of updatedChanges) {
+        const { oldCode, newCode, label } = change;
+
+        // 空文字チェック
+        if (!newCode || newCode.trim().length === 0) {
+          errors.push(`「${label}」: フィールドコードが空です`);
+          continue;
+        }
+
+        // 設定できない文字列チェック
+        if (forbiddenStrings.includes(newCode)) {
+          errors.push(`「${label}」: フィールドコードに設定できない文字列です (${newCode})`);
+        }
+
+        // 使用できない文字チェック
+        if (invalidCharPattern.test(newCode)) {
+          errors.push(`「${label}」: フィールドコードに使用できない文字が含まれています (${newCode})`);
+        }
+
+        // 先頭が半角数字チェック
+        if (startsWithNumberPattern.test(newCode)) {
+          errors.push(`「${label}」: フィールドコードは半角数字で始めることはできません (${newCode})`);
+        }
+
+        // 重複チェック（現在のコードと同じ場合は除外）
+        if (newCode !== oldCode) {
+          if (usedCodes.has(newCode)) {
+            errors.push(`「${label}」: フィールドコードが重複しています (${newCode})`);
+          }
+          if (existingCodes.has(newCode)) {
+            errors.push(`「${label}」: 既存のフィールドコードと重複しています (${newCode})`);
+          }
+        }
+
+        usedCodes.add(newCode);
+      }
+
+      return {
+        isValid: errors.length === 0,
+        errors: errors
+      };
+    }
+
+    // バリデーションエラー表示関数
+    function showValidationErrors(errors: string[]) {
+      const errorMessage = "以下のエラーがあります：\n\n" + errors.join('\n');
+      alert(errorMessage);
+    }
+
+    // ダイアログを表示
+    showChangesDialog();
+
 
     // フィールドコード変更の実行
-    const executeFieldCodeChanges = async () => {
+    const executeFieldCodeChanges = async (changesToExecute: any[]) => {
       try {
         // アプリの現在のリビジョンを取得
         const appDetails = await (kintone as any).api(
@@ -471,11 +489,27 @@ declare const kintone: any;
         // フィールド設定を変更するアプローチ
         const properties: { [key: string]: any } = {};
         
-        for (const change of changes) {
+        // フィールドコード変更のマッピングを作成
+        const fieldCodeMapping: { [oldCode: string]: string } = {};
+        for (const change of changesToExecute) {
+          fieldCodeMapping[change.oldCode] = change.newCode;
+        }
+        
+        for (const change of changesToExecute) {
           console.log(`[Kintone Dev Tools] Processing change: ${change.oldCode} → ${change.newCode}`);
           
           const originalField = appInfo.fields![change.oldCode];
           if (originalField) {
+            // 計算式内のフィールドコード参照を更新
+            let updatedExpression = originalField.expression || "";
+            if (updatedExpression) {
+              // 変更されたフィールドコードを計算式内で置換
+              for (const [oldCode, newCode] of Object.entries(fieldCodeMapping)) {
+                const regex = new RegExp(`\\b${oldCode}\\b`, 'g');
+                updatedExpression = updatedExpression.replace(regex, newCode);
+              }
+            }
+            
             // フィールド設定を変更（codeプロパティを新しいコードに変更）
             properties[change.oldCode] = {
               type: originalField.type,
@@ -485,11 +519,35 @@ declare const kintone: any;
               required: originalField.required || false,
               minLength: originalField.minLength || "",
               maxLength: originalField.maxLength || "",
-              expression: originalField.expression || "",
+              expression: updatedExpression,
               hideExpression: originalField.hideExpression || false,
               unique: originalField.unique || false,
               defaultValue: originalField.defaultValue || ""
             };
+          }
+        }
+        
+        // 他のフィールドの計算式も更新
+        for (const [fieldCode, field] of Object.entries(appInfo.fields!)) {
+          if (field.expression && !properties[fieldCode]) {
+            let updatedExpression = field.expression;
+            let hasChanges = false;
+            
+            // 変更されたフィールドコードを計算式内で置換
+            for (const [oldCode, newCode] of Object.entries(fieldCodeMapping)) {
+              const regex = new RegExp(`\\b${oldCode}\\b`, 'g');
+              if (updatedExpression.includes(oldCode)) {
+                updatedExpression = updatedExpression.replace(regex, newCode);
+                hasChanges = true;
+              }
+            }
+            
+            if (hasChanges) {
+              properties[fieldCode] = {
+                ...field,
+                expression: updatedExpression
+              };
+            }
           }
         }
 
@@ -542,24 +600,41 @@ declare const kintone: any;
             }
           );
           
-          alert(`${changes.length}個のフィールドコードを変更し、運用環境に反映しました。\nページを再読み込みしてください。`);
+          alert(`${changesToExecute.length}個のフィールドコードを変更し、運用環境に反映しました。\nページを再読み込みしてください。`);
         } else {
-          alert(`${changes.length}個のフィールドコードをプレビュー環境で変更しました。\n運用環境への反映は管理画面から行ってください。`);
+          alert(`${changesToExecute.length}個のフィールドコードをプレビュー環境で変更しました。\n運用環境への反映は管理画面から行ってください。`);
         }
         
         // ページを再読み込み
         location.reload();
       } catch (error) {
         console.error("[Kintone Dev Tools] Failed to change field codes:", error);
-        showErrorDialog(error);
+        alert("フィールドコードの変更中にエラーが発生しました。");
       }
     };
 
-      // ダイアログを表示
-      showChangesDialog();
     } catch (error) {
       console.error("[Kintone Dev Tools] Failed to change field codes:", error);
-      showErrorDialog(error);
+      
+      // 詳細なエラーメッセージを表示
+      let errorMessage = "フィールドコードの変更中にエラーが発生しました。";
+      
+      if (error && typeof error === 'object') {
+        const errorStr = error.toString();
+        if (errorStr.includes('ERR_CONNECTION_RESET') || errorStr.includes('ERR_NETWORK')) {
+          errorMessage = "ネットワークエラーが発生しました。\nインターネット接続を確認し、ページを再読み込みしてから再度お試しください。";
+        } else if (errorStr.includes('ERR_TIMED_OUT')) {
+          errorMessage = "タイムアウトエラーが発生しました。\nしばらく時間をおいてから再度お試しください。";
+        } else if (errorStr.includes('400')) {
+          errorMessage = "リクエストが正しくありません。\nフィールドコードに使用できない文字が含まれている可能性があります。";
+        } else if (errorStr.includes('403') || errorStr.includes('401')) {
+          errorMessage = "アクセス権限がありません。\nこのアプリの設定を変更する権限があることを確認してください。";
+        } else if (errorStr.includes('404')) {
+          errorMessage = "アプリまたはフィールドが見つかりません。\n正しいアプリページにいることを確認してください。";
+        }
+      }
+      
+      alert(errorMessage);
     }
   }
 
