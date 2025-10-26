@@ -1,46 +1,53 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8" />
-  <title>kintone Dev Tools(仮)</title>
+  <title>Devkinox</title>
   <!-- Font Awesome CDN -->
-  <link
-    rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"
-  />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" />
   <style>
     body {
       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
       margin: 0;
       padding: 10px;
       background-color: #f4f4f4;
-      width: 320px; /* ポップアップの幅を少し広げる */
+      width: 320px;
+      /* ポップアップの幅を少し広げる */
       color: #333;
     }
+
     .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 15px;
     }
+
     .header h1 {
       font-size: 1.2em;
       margin: 0;
       color: #2c3e50;
     }
+
     .settings-icon {
       font-size: 1.2em;
       color: #7f8c8d;
       cursor: pointer;
     }
+
     .settings-icon:hover {
       color: #34495e;
     }
+
     #buttons-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr); /* 2列グリッド */
-      gap: 10px; /* グリッドアイテム間の隙間 */
+      grid-template-columns: repeat(2, 1fr);
+      /* 2列グリッド */
+      gap: 10px;
+      /* グリッドアイテム間の隙間 */
     }
+
     .button {
       background-color: #3498db;
       color: white;
@@ -48,23 +55,33 @@
       padding: 12px 10px;
       text-align: center;
       text-decoration: none;
-      display: flex; /* アイコンとテキストを横並びにするため */
-      flex-direction: column; /* アイコンを上、テキストを下に */
-      align-items: center; /* 中央揃え */
-      justify-content: center; /* 中央揃え */
+      display: flex;
+      /* アイコンとテキストを横並びにするため */
+      flex-direction: column;
+      /* アイコンを上、テキストを下に */
+      align-items: center;
+      /* 中央揃え */
+      justify-content: center;
+      /* 中央揃え */
       font-size: 0.9em;
       border-radius: 5px;
       cursor: pointer;
       transition: background-color 0.3s ease;
-      min-height: 70px; /* ボタンの高さを確保 */
+      min-height: 70px;
+      /* ボタンの高さを確保 */
     }
+
     .button:hover {
       background-color: #2980b9;
     }
+
     .button i {
-      font-size: 1.5em; /* アイコンサイズ */
-      margin-bottom: 5px; /* アイコンとテキストの間隔 */
+      font-size: 1.5em;
+      /* アイコンサイズ */
+      margin-bottom: 5px;
+      /* アイコンとテキストの間隔 */
     }
+
     .no-addons {
       text-align: center;
       color: #7f8c8d;
@@ -72,10 +89,11 @@
     }
   </style>
 </head>
+
 <body>
   <div class="header">
-    <h1>kintone Dev Tools(仮)</h1>
-    <i class="fas fa-cog settings-icon" title="設定 (準備中)"></i>
+    <h1>Devkinox</h1>
+    <i class="fas fa-cog settings-icon" title="Devkinox"></i>
   </div>
 
   <div id="buttons-grid"></div>
@@ -85,4 +103,5 @@
 
   <script type="module" src="./main.js"></script>
 </body>
-</html> 
+
+</html>
