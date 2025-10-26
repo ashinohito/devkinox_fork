@@ -278,7 +278,7 @@ declare const kintone: any;
             border-radius: 8px;
             padding: 20px;
             width: 95%;
-            height: 90%;
+            max-height: 85%;
             overflow: auto;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
           ">
