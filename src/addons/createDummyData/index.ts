@@ -1,7 +1,7 @@
 import type { PageType, AppInfo, FieldProperty } from "./types";
 
-//MEMO:だいたいのコードはたむらさんのパクリ
-//TODO:余裕があればフロント、ビジネス、APIごとにディレクトリを切り分けたい。
+//MEMO:だいたいのコードはたむらさんのパクリ。
+//TODO:余裕があればフロント、ビジネスロジ、APIロジごとにファイルを切り分けたい。
 (() => {
   console.log(
     "[Kintone Dev Tools] createDummyData.js (content script) loaded."
@@ -97,7 +97,7 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
     }
   }
 
-  function showDialogInputApiKey(appId:string): Promise<{
+  function showDialogInputApiKey(appId: string): Promise<{
     status: boolean;
     kintoneApi: string;
     awsApi: string;
@@ -120,6 +120,11 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
       title.textContent = "APIKey入力をしてください";
       title.style.textAlign = "center";
       dialog.appendChild(title);
+
+      const subTitle = document.createElement("p");
+      subTitle.textContent = "注意:GitHub上のAWS CDKを使用してサーバーをデプロイした後に使用してください。";
+      subTitle.style.textAlign = "center";
+      dialog.appendChild(subTitle);
 
       // アプリIDをみせておく
       const appIdLabel = document.createElement("label");
@@ -178,32 +183,118 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
   }
 
 
+  function showSelectDammyData(): Promise<{
+    isSmartDammyData: boolean;
+  }> {
+    return new Promise((resolve) => {
+      const existingDialog = document.getElementById(DIALOG_INPUT_ID);
+      if (existingDialog) existingDialog.remove();
+
+      const dialog = document.createElement("div");
+      dialog.id = DIALOG_INPUT_ID;
+      dialog.style.cssText = `
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      z-index: 2147483647;
+      width: 400px; display: flex; flex-direction: column; gap: 15px;
+    `;
+
+      // タイトル
+      const title = document.createElement("h3");
+      title.textContent = "ダミーデータを生成";
+      title.style.textAlign = "center";
+      dialog.appendChild(title);
+
+      // ボタン
+      const buttonContainer = document.createElement("div");
+      buttonContainer.style.display = "flex";
+      buttonContainer.style.justifyContent = "flex-end";
+      buttonContainer.style.gap = "10px";
+
+      const SmartDammyDataButton = document.createElement("button");
+      SmartDammyDataButton.textContent = "正確なダミーデータ作成";
+      SmartDammyDataButton.onclick = () => {
+        dialog.remove();
+        resolve({ isSmartDammyData: true });
+      };
+
+      const LabelDammyDataButton = document.createElement("button");
+      LabelDammyDataButton.textContent = "Labelダミーデータ作成";
+      LabelDammyDataButton.onclick = () => {
+        dialog.remove();
+        resolve({ isSmartDammyData: false });
+      };
+
+      buttonContainer.appendChild(LabelDammyDataButton);
+      buttonContainer.appendChild(SmartDammyDataButton);
+      dialog.appendChild(buttonContainer);
+      document.body.appendChild(dialog);
+    });
+  }
+
+  function insertLabelDammyData() {
+    if (typeof kintone === "undefined" || !kintone || !kintone.app) {
+      console.warn(
+        "[Kintone Dev Tools] kintone.app object is not available at this moment."
+      );
+    }
+    let appFields: { [fieldCode: string]: FieldProperty } | undefined;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fieldsResponse = kintone.app.record.get();
+      console.log(
+        "[Kintone Dev Tools] App Form Local Fields:",
+        fieldsResponse
+      );
+      const record = fieldsResponse.record
+      for (const key in record) {
+        const field = record[key];
+        if (field.type === "SINGLE_LINE_TEXT" && field.value === undefined) {
+          field.value = key;
+        }
+      }
+      console.log("Result", fieldsResponse)
+      kintone.app.record.set(fieldsResponse)
+    } catch (fieldsError) {
+      console.error(
+        "[Kintone Dev Tools] Failed to get app form fields:",
+        fieldsError
+      );
+    }
+  }
+
   async function main() {
     console.log(`[Kintone Dev Tools] Running main function in genalateDummyData.js`);
     try {
-      //表示画面情報の取得。
       const appInfo = await getAppInfoFromPage();//アプリ情報の取得
       if (!appInfo) {
         alert("Kintoneアプリ情報を取得できませんでした。ページが正しく読み込まれているか、Kintoneのアプリページであることを確認してください。");
         throw new Error("[Kintone Dev Tools] Failed to get app info even in MAIN world.");
       }
       console.log(appInfo.pageType)
-      //現在の画面とアプリIDと名前、APIキーのテキストBOXダイアログを出す
-      //
-      // ここで編集画面か一覧画面か分岐させる。
-      switch (appInfo.pageType) {
+      switch (appInfo.pageType) {// 編集画面か一覧画面か分岐させる。
         case "APP_INDEX":
           showAlert("「一覧画面上のダミーデータ作成」機能は現在準備中です。")
           break;
         case "APP_CREATE":
         case "APP_EDIT":
-          showDialogInputApiKey(appInfo.appId).then(({ status, kintoneApi, awsApi }) => {
-            if (status) {
-              console.log("入力値:", kintoneApi, awsApi);
+          showSelectDammyData().then(({ isSmartDammyData }) => {
+            if (isSmartDammyData) {
+              console.log("showDialogInputApiKey");
+              showAlert("「正確なダミーデータ作成」機能は開発中です。")
+              // showDialogInputApiKey(appInfo.appId).then(({ status, kintoneApi, awsApi }) => {
+              //   if (status) {
+              //     console.log("入力値:", kintoneApi, awsApi);
+              //   } else {
+              //     console.log("キャンセルされました");
+              //   }
+              // });
             } else {
-              console.log("キャンセルされました");
+              const result = confirm('ラベルダミーデータを作成しますか？');
+              if (!result) return;
+              insertLabelDammyData()
             }
-          });
+          })
           break;
         case "OTHER":
           showAlert("「ダミーデータ作成」機能は一覧画面と編集画面の機能です。")
