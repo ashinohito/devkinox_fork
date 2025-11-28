@@ -88,7 +88,19 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
     const existingDialog = document.getElementById(
       "kintone-dev-tools-app-info-dialog"
     );
+    const existingOverlay = document.getElementById(
+      "kintone-dev-tools-app-info-overlay"
+    );
     if (existingDialog) existingDialog.remove();
+    if (existingOverlay) existingOverlay.remove();
+    // オーバーレイを作成
+    const overlay = document.createElement("div");
+    overlay.id = "kintone-dev-tools-app-info-overlay";
+    overlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.3); z-index: 2147483646;
+    `;
+    
     const dialog = document.createElement("div");
     dialog.id = "kintone-dev-tools-app-info-dialog";
     // eslint-disable-next-line prettier/prettier
@@ -150,12 +162,46 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
 
     content.innerHTML = htmlContent;
     dialog.appendChild(content);
+    
+    // 区切り線を追加
+    const separator = document.createElement("hr");
+    separator.style.cssText = `
+      margin: 20px 0;
+      border: none;
+      border-top: 2px solid #e0e0e0;
+    `;
+    dialog.appendChild(separator);
+    
+    // 閉じるボタンをダイアログ内の一番下に表示
     const closeButton = document.createElement("button");
     closeButton.textContent = "閉じる";
-    closeButton.style.cssText =
-      "margin-top: 15px; padding: 8px 15px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; display: block; margin-left: auto; margin-right: auto;";
-    closeButton.onclick = () => dialog.remove();
+    closeButton.style.cssText = `
+      display: block;
+      margin: 0 auto;
+      padding: 12px 24px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    `;
+    closeButton.onclick = () => {
+      dialog.remove();
+      overlay.remove();
+    };
     dialog.appendChild(closeButton);
+    
+    // オーバーレイをクリックしたら閉じる
+    overlay.onclick = () => {
+      dialog.remove();
+      overlay.remove();
+    };
+    
+    // オーバーレイとダイアログを追加
+    document.body.appendChild(overlay);
     document.body.appendChild(dialog);
     console.log(
       "[Kintone Dev Tools] Dialog appended to body by content script."
