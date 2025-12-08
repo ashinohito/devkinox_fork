@@ -3,7 +3,7 @@
 (() => {
   console.log("[Kintone Dev Tools] DualAPIRecordUpdater loaded.");
 
-  const LABEL = "2種類のレコード一括更新";
+  const LABEL = "ふたつの一括更新API";
   const DIALOG_ID = "kintone-dev-tools-dual-api-record-updater-dialog";
 
   // ========================================
@@ -817,7 +817,7 @@
 
     const description = document.createElement("p");
     description.textContent =
-      "選択したフィールドの値を再保存し、Webhook等をトリガーします。";
+      "一覧しているレコードを対象に2種類のAPIで一括更新します。";
     description.style.textAlign = "center";
     description.style.color = "#666";
     description.style.fontSize = "14px";
@@ -850,7 +850,7 @@
         </ul>
       </div>
       <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px;">
-        ※ 回数制限: 1分間に60回まで（61回目以降は送信されない）
+        ※ Webhook回数制限: 1分間に60回まで（61回目以降は送信されません）
       </div>
     `;
     dialog.appendChild(infoPanel);
