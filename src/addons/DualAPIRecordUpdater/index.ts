@@ -274,6 +274,75 @@
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(220, 38, 38, 0.5);
 }
+
+.dual-api-info-link {
+    color: #667eea;
+    cursor: pointer;
+    font-size: 13px;
+    text-align: center;
+    margin: 5px 0;
+    text-decoration: underline;
+    transition: color 0.2s ease;
+}
+
+.dual-api-info-link:hover {
+    color: #764ba2;
+}
+
+.dual-api-info-panel {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 10px;
+    font-size: 13px;
+    display: none;
+}
+
+.dual-api-info-panel.open {
+    display: block;
+}
+
+.dual-api-info-section {
+    margin-bottom: 10px;
+}
+
+.dual-api-info-section:last-child {
+    margin-bottom: 0;
+}
+
+.dual-api-info-title {
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 2px solid;
+}
+
+.dual-api-info-title.bulk {
+    border-color: #667eea;
+}
+
+.dual-api-info-title.single {
+    border-color: #f5576c;
+}
+
+.dual-api-info-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    color: #475569;
+}
+
+.dual-api-info-list li {
+    padding: 2px 0;
+    padding-left: 1em;
+    text-indent: -1em;
+}
+
+.dual-api-info-list li::before {
+    content: "・";
+}
 `;
     document.head.appendChild(styleSheet);
   }
@@ -615,6 +684,41 @@
     description.style.color = "#666";
     description.style.fontSize = "14px";
     dialog.appendChild(description);
+
+    // 「APIの違いを見る」リンク
+    const infoLink = document.createElement("div");
+    infoLink.className = "dual-api-info-link";
+    infoLink.textContent = "APIの違いを見る ▼";
+    dialog.appendChild(infoLink);
+
+    // 情報パネル
+    const infoPanel = document.createElement("div");
+    infoPanel.className = "dual-api-info-panel";
+    infoPanel.innerHTML = `
+      <div class="dual-api-info-section">
+        <div class="dual-api-info-title bulk">records.json（一括更新）</div>
+        <ul class="dual-api-info-list">
+          <li>Webhook: 発火しない</li>
+          <li>通知: 送信されない</li>
+          <li>処理速度: 高速（最大100件/回）</li>
+        </ul>
+      </div>
+      <div class="dual-api-info-section">
+        <div class="dual-api-info-title single">record.json（個別更新）</div>
+        <ul class="dual-api-info-list">
+          <li>Webhook: 発火する</li>
+          <li>通知: 送信される</li>
+          <li>処理速度: 低速（1件/回）</li>
+        </ul>
+      </div>
+    `;
+    dialog.appendChild(infoPanel);
+
+    // リンククリックでパネルをトグル
+    infoLink.onclick = () => {
+      const isOpen = infoPanel.classList.toggle("open");
+      infoLink.textContent = isOpen ? "APIの違いを見る ▲" : "APIの違いを見る ▼";
+    };
 
     const buttonContainer = document.createElement("div");
     buttonContainer.style.display = "flex";
