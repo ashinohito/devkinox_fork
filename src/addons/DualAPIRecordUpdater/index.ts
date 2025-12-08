@@ -343,6 +343,75 @@
 .dual-api-info-list li::before {
     content: "・";
 }
+
+.countdown-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(8px);
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+}
+
+.countdown-container {
+    position: relative;
+    width: 200px;
+    height: 200px;
+}
+
+.countdown-svg {
+    transform: rotate(-90deg);
+    width: 200px;
+    height: 200px;
+}
+
+.countdown-circle-bg {
+    fill: none;
+    stroke: #334155;
+    stroke-width: 8;
+}
+
+.countdown-circle-progress {
+    fill: none;
+    stroke: url(#countdown-gradient);
+    stroke-width: 8;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear;
+}
+
+.countdown-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+}
+
+.countdown-seconds {
+    font-size: 48px;
+    font-weight: 700;
+    color: white;
+    line-height: 1;
+}
+
+.countdown-label {
+    font-size: 14px;
+    color: #94a3b8;
+    margin-top: 4px;
+}
+
+.countdown-message {
+    color: #e2e8f0;
+    font-size: 14px;
+    margin-top: 24px;
+    text-align: center;
+}
 `;
     document.head.appendChild(styleSheet);
   }
@@ -524,6 +593,62 @@
   }
 
   // ========================================
+  // カウントダウン表示
+  // ========================================
+  async function showCountdown(
+    seconds: number,
+    message: string
+  ): Promise<void> {
+    const radius = 90;
+    const circumference = 2 * Math.PI * radius;
+
+    const overlay = document.createElement("div");
+    overlay.className = "countdown-overlay";
+    overlay.innerHTML = `
+      <div class="countdown-container">
+        <svg class="countdown-svg" viewBox="0 0 200 200">
+          <defs>
+            <linearGradient id="countdown-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#f093fb"/>
+              <stop offset="100%" style="stop-color:#f5576c"/>
+            </linearGradient>
+          </defs>
+          <circle class="countdown-circle-bg" cx="100" cy="100" r="${radius}"/>
+          <circle class="countdown-circle-progress" cx="100" cy="100" r="${radius}"
+            stroke-dasharray="${circumference}"
+            stroke-dashoffset="0"/>
+        </svg>
+        <div class="countdown-text">
+          <div class="countdown-seconds">${seconds}</div>
+          <div class="countdown-label">秒</div>
+        </div>
+      </div>
+      <div class="countdown-message">${message}</div>
+    `;
+    document.body.appendChild(overlay);
+
+    const progressCircle = overlay.querySelector(
+      ".countdown-circle-progress"
+    ) as SVGCircleElement;
+    const secondsEl = overlay.querySelector(
+      ".countdown-seconds"
+    ) as HTMLElement;
+
+    for (let sec = seconds; sec > 0; sec--) {
+      secondsEl.textContent = sec.toString();
+      const offset = circumference * (1 - sec / seconds);
+      progressCircle.style.strokeDashoffset = offset.toString();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    secondsEl.textContent = "0";
+    progressCircle.style.strokeDashoffset = circumference.toString();
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    overlay.remove();
+  }
+
+  // ========================================
   // レコード取得・更新
   // ========================================
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -630,14 +755,10 @@
         // 60件ごとに1分待機（制限モード時）
         if (rateLimitMode && i > 0 && i % 60 === 0) {
           console.log(`回数制限のため60秒待機開始 (${i}件処理済み)`);
-          for (let sec = 60; sec > 0; sec--) {
-            progress.update(
-              i,
-              records.length,
-              `回数制限のため待機中... 残り${sec}秒 (${i}/${records.length}件処理済み)`
-            );
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-          }
+          await showCountdown(
+            60,
+            `回数制限のため待機中... (${i}/${records.length}件処理済み)`
+          );
           console.log("待機完了、処理再開");
         }
 
