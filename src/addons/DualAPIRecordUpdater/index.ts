@@ -3,7 +3,7 @@
 (() => {
   console.log("[Kintone Dev Tools] DualAPIRecordUpdater loaded.");
 
-  const LABEL = "ふたつの一括更新API";
+  const LABEL = "ふたつの更新API";
   const DIALOG_ID = "kintone-dev-tools-dual-api-record-updater-dialog";
 
   // ========================================
@@ -950,7 +950,7 @@
     rateLimitCheckbox.type = "checkbox";
     rateLimitCheckbox.style.cssText = `
       width: 16px; height: 16px; cursor: pointer;
-      accent-color: #f5576c;
+      accent-color: #3498db;
     `;
     const rateLimitLabel = document.createTextNode(
       "回数制限モード（60件ごとに1分待機）"
