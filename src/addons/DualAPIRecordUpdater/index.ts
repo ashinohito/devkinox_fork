@@ -76,7 +76,7 @@
     display: inline-block;
     width: 4px;
     height: 24px;
-    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    background: #3498db;
     border-radius: 2px;
 }
 
@@ -100,8 +100,8 @@
 
 .webhook-select:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+    border-color: #3498db;
+    box-shadow: 0 0 0 4px rgba(52, 152, 219, 0.1);
 }
 
 .webhook-select:hover {
@@ -141,16 +141,17 @@
     padding: 12px 28px;
     border: none;
     border-radius: 10px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #3498db;
     color: white;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
 }
 
 .webhook-btn-execute:hover {
+    background: #2980b9;
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+    box-shadow: 0 6px 20px rgba(52, 152, 219, 0.5);
 }
 
 .webhook-progress-title {
@@ -177,7 +178,7 @@
 
 .webhook-progress-bar {
     height: 100%;
-    background: linear-gradient(90deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    background: linear-gradient(90deg, #3498db 0%, #2980b9 50%, #3498db 100%);
     background-size: 200% 100%;
     border-radius: 6px;
     transition: width 0.3s ease;
@@ -200,10 +201,7 @@
 .webhook-progress-percent {
     font-size: 32px;
     font-weight: 600;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: #3498db;
 }
 
 .webhook-error-dialog {
@@ -276,7 +274,7 @@
 }
 
 .dual-api-info-link {
-    color: #667eea;
+    color: #3498db;
     cursor: pointer;
     font-size: 13px;
     text-align: center;
@@ -286,7 +284,7 @@
 }
 
 .dual-api-info-link:hover {
-    color: #764ba2;
+    color: #2980b9;
 }
 
 .dual-api-info-panel {
@@ -320,11 +318,11 @@
 }
 
 .dual-api-info-title.bulk {
-    border-color: #667eea;
+    border-color: #3498db;
 }
 
 .dual-api-info-title.single {
-    border-color: #f5576c;
+    border-color: #e74c3c;
 }
 
 .dual-api-info-list {
@@ -609,8 +607,8 @@
         <svg class="countdown-svg" viewBox="0 0 200 200">
           <defs>
             <linearGradient id="countdown-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" style="stop-color:#f093fb"/>
-              <stop offset="100%" style="stop-color:#f5576c"/>
+              <stop offset="0%" style="stop-color:#3498db"/>
+              <stop offset="100%" style="stop-color:#2980b9"/>
             </linearGradient>
           </defs>
           <circle class="countdown-circle-bg" cx="100" cy="100" r="${radius}"/>
@@ -890,18 +888,20 @@
     bulkButton.textContent = "一括更新 (records.json)";
     bulkButton.style.cssText = `
       padding: 12px 20px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #3498db;
       color: white; border: none; border-radius: 8px; cursor: pointer;
       font-size: 14px; font-weight: 500;
       transition: all 0.3s ease;
     `;
     bulkButton.onmouseenter = () => {
       bulkButton.style.transform = "translateY(-2px)";
-      bulkButton.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
+      bulkButton.style.boxShadow = "0 4px 15px rgba(52, 152, 219, 0.4)";
+      bulkButton.style.background = "#2980b9";
     };
     bulkButton.onmouseleave = () => {
       bulkButton.style.transform = "translateY(0)";
       bulkButton.style.boxShadow = "none";
+      bulkButton.style.background = "#3498db";
     };
     bulkButton.onclick = async () => {
       closeDialog();
@@ -922,18 +922,20 @@
     singleButton.textContent = "個別更新 (record.json)";
     singleButton.style.cssText = `
       padding: 12px 20px;
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      background: #e74c3c;
       color: white; border: none; border-radius: 8px; cursor: pointer;
       font-size: 14px; font-weight: 500;
       transition: all 0.3s ease;
     `;
     singleButton.onmouseenter = () => {
       singleButton.style.transform = "translateY(-2px)";
-      singleButton.style.boxShadow = "0 4px 15px rgba(245, 87, 108, 0.4)";
+      singleButton.style.boxShadow = "0 4px 15px rgba(231, 76, 60, 0.4)";
+      singleButton.style.background = "#c0392b";
     };
     singleButton.onmouseleave = () => {
       singleButton.style.transform = "translateY(0)";
       singleButton.style.boxShadow = "none";
+      singleButton.style.background = "#e74c3c";
     };
     buttonContainer.appendChild(singleButton);
 
