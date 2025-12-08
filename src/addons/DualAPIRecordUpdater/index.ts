@@ -797,17 +797,35 @@
   // メインダイアログ
   // ========================================
   function showDialog(): void {
-    const existingDialog = document.getElementById(DIALOG_ID);
-    if (existingDialog) existingDialog.remove();
+    const existingOverlay = document.getElementById(DIALOG_ID + "-overlay");
+    if (existingOverlay) existingOverlay.remove();
+
+    // オーバーレイ（モーダル背景）
+    const overlay = document.createElement("div");
+    overlay.id = DIALOG_ID + "-overlay";
+    overlay.className = "webhook-overlay";
 
     const dialog = document.createElement("div");
     dialog.id = DIALOG_ID;
+    dialog.className = "webhook-dialog";
     dialog.style.cssText = `
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      z-index: 2147483647;
       width: 400px; display: flex; flex-direction: column; gap: 15px;
     `;
+
+    // ダイアログを閉じる関数
+    const closeDialog = () => {
+      overlay.style.animation = "fadeIn 0.2s ease reverse forwards";
+      setTimeout(() => overlay.remove(), 200);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+
+    // ESCキーでダイアログを閉じる
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        closeDialog();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
 
     const title = document.createElement("h3");
     title.textContent = LABEL;
@@ -886,7 +904,7 @@
       bulkButton.style.boxShadow = "none";
     };
     bulkButton.onclick = async () => {
-      dialog.remove();
+      closeDialog();
       const appId = kintone.app.getId();
       if (!appId) {
         alert("アプリIDを取得できませんでした。");
@@ -942,7 +960,7 @@
     // 個別更新ボタンのクリックイベント
     singleButton.onclick = async () => {
       const rateLimitMode = rateLimitCheckbox.checked;
-      dialog.remove();
+      closeDialog();
       const appId = kintone.app.getId();
       if (!appId) {
         alert("アプリIDを取得できませんでした。");
@@ -962,12 +980,13 @@
       border: none; border-radius: 8px; cursor: pointer;
       font-size: 14px; margin-top: 5px;
     `;
-    closeButton.onclick = () => dialog.remove();
+    closeButton.onclick = () => closeDialog();
     buttonContainer.appendChild(closeButton);
 
     dialog.appendChild(buttonContainer);
 
-    document.body.appendChild(dialog);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
     console.log("[Kintone Dev Tools] DualAPIRecordUpdater dialog shown.");
   }
 
