@@ -3,420 +3,514 @@
 (() => {
   console.log("[Kintone Dev Tools] DualAPIRecordUpdater loaded.");
 
-  const LABEL = "ふたつの更新API";
-  const DIALOG_ID = "kintone-dev-tools-dual-api-record-updater-dialog";
+  // ========================================
+  // 定数
+  // ========================================
+  const CONFIG = {
+    LABEL: "ふたつの更新API",
+    DIALOG_ID: "kintone-dev-tools-dual-api-record-updater-dialog",
+    STYLE_ID: "dual-api-record-updater-styles",
+    RATE_LIMIT: {
+      REQUESTS_PER_MINUTE: 60,
+      WAIT_SECONDS: 60,
+    },
+    BATCH_SIZE: {
+      BULK_UPDATE: 100,
+      FETCH: 500,
+    },
+  } as const;
+
+  // kintoneカラーパレット
+  const COLORS = {
+    PRIMARY: "#3498db",
+    PRIMARY_HOVER: "#2980b9",
+    DANGER: "#e74c3c",
+    DANGER_HOVER: "#c0392b",
+    ERROR: "#dc2626",
+    ERROR_LIGHT: "#ef4444",
+    TEXT_DARK: "#1e293b",
+    TEXT_MEDIUM: "#475569",
+    TEXT_LIGHT: "#64748b",
+    TEXT_MUTED: "#94a3b8",
+    BORDER: "#e2e8f0",
+    BORDER_HOVER: "#cbd5e1",
+    BG_WHITE: "#ffffff",
+    BG_LIGHT: "#f8fafc",
+    BG_DARK: "#1e293b",
+    OVERLAY: "rgba(15, 23, 42, 0.6)",
+    OVERLAY_DARK: "rgba(15, 23, 42, 0.8)",
+  } as const;
+
+  // 編集可能なフィールドタイプ
+  const EDITABLE_FIELD_TYPES = [
+    "SINGLE_LINE_TEXT",
+    "MULTI_LINE_TEXT",
+    "RICH_TEXT",
+    "NUMBER",
+    "DROP_DOWN",
+    "RADIO_BUTTON",
+    "CHECK_BOX",
+    "MULTI_SELECT",
+    "DATE",
+    "TIME",
+    "DATETIME",
+    "LINK",
+  ] as const;
 
   // ========================================
-  // スタイル注入
+  // 型定義
   // ========================================
-  function injectStyles(): void {
-    if (document.getElementById("dual-api-record-updater-styles")) return;
+  interface ProgressDialog {
+    update: (current: number, total: number, message?: string) => void;
+    close: () => void;
+  }
 
-    const styleSheet = document.createElement("style");
-    styleSheet.id = "dual-api-record-updater-styles";
-    styleSheet.textContent = `
+  interface FieldInfo {
+    code: string;
+    label: string;
+    type: string;
+  }
+
+  // ========================================
+  // CSS定義
+  // ========================================
+  const CSS_STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600&display=swap');
 
-.webhook-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(15, 23, 42, 0.6);
-    backdrop-filter: blur(8px);
-    z-index: 10000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    animation: fadeIn 0.3s ease forwards;
-}
-
+/* アニメーション */
 @keyframes fadeIn {
-    to { opacity: 1; }
+  to { opacity: 1; }
 }
 
 @keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-.webhook-dialog {
-    font-family: 'Noto Sans JP', sans-serif;
-    background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
-    padding: 32px;
-    border-radius: 20px;
-    min-width: 420px;
-    max-width: 500px;
-    box-shadow:
-        0 25px 50px -12px rgba(0, 0, 0, 0.25),
-        0 0 0 1px rgba(255, 255, 255, 0.1);
-    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.webhook-dialog-title {
-    font-size: 20px;
-    font-weight: 600;
-    color: #1e293b;
-    margin: 0 0 24px 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.webhook-dialog-title::before {
-    content: '';
-    display: inline-block;
-    width: 4px;
-    height: 24px;
-    background: #3498db;
-    border-radius: 2px;
-}
-
-.webhook-select {
-    width: 100%;
-    padding: 14px 16px;
-    font-family: 'Noto Sans JP', sans-serif;
-    font-size: 14px;
-    border: 2px solid #e2e8f0;
-    border-radius: 12px;
-    background: white;
-    color: #334155;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    background-size: 18px;
-}
-
-.webhook-select:focus {
-    outline: none;
-    border-color: #3498db;
-    box-shadow: 0 0 0 4px rgba(52, 152, 219, 0.1);
-}
-
-.webhook-select:hover {
-    border-color: #cbd5e1;
-}
-
-.webhook-btn-container {
-    margin-top: 28px;
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-}
-
-.webhook-btn-cancel {
-    font-family: 'Noto Sans JP', sans-serif;
-    font-weight: 500;
-    font-size: 14px;
-    padding: 12px 24px;
-    border: 2px solid #e2e8f0;
-    border-radius: 10px;
-    background: white;
-    color: #64748b;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.webhook-btn-cancel:hover {
-    background: #f8fafc;
-    border-color: #cbd5e1;
-    color: #475569;
-}
-
-.webhook-btn-execute {
-    font-family: 'Noto Sans JP', sans-serif;
-    font-weight: 500;
-    font-size: 14px;
-    padding: 12px 28px;
-    border: none;
-    border-radius: 10px;
-    background: #3498db;
-    color: white;
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
-}
-
-.webhook-btn-execute:hover {
-    background: #2980b9;
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(52, 152, 219, 0.5);
-}
-
-.webhook-progress-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: #1e293b;
-    margin: 0 0 20px 0;
-}
-
-.webhook-progress-message {
-    font-size: 14px;
-    color: #64748b;
-    margin-bottom: 16px;
-}
-
-.webhook-progress-bar-container {
-    width: 100%;
-    height: 12px;
-    background: #e2e8f0;
-    border-radius: 6px;
-    overflow: hidden;
-    position: relative;
-}
-
-.webhook-progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #3498db 0%, #2980b9 50%, #3498db 100%);
-    background-size: 200% 100%;
-    border-radius: 6px;
-    transition: width 0.3s ease;
-    animation: shimmer 2s infinite linear;
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* オーバーレイ */
+.webhook-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: ${COLORS.OVERLAY};
+  backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  animation: fadeIn 0.3s ease forwards;
+}
+
+/* ダイアログ共通 */
+.webhook-dialog {
+  font-family: 'Noto Sans JP', sans-serif;
+  background: linear-gradient(145deg, ${COLORS.BG_WHITE} 0%, ${COLORS.BG_LIGHT} 100%);
+  padding: 32px;
+  border-radius: 20px;
+  min-width: 420px;
+  max-width: 500px;
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.webhook-dialog-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: ${COLORS.TEXT_DARK};
+  margin: 0 0 24px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.webhook-dialog-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 24px;
+  background: ${COLORS.PRIMARY};
+  border-radius: 2px;
+}
+
+/* セレクトボックス */
+.webhook-select {
+  width: 100%;
+  padding: 14px 16px;
+  font-family: 'Noto Sans JP', sans-serif;
+  font-size: 14px;
+  border: 2px solid ${COLORS.BORDER};
+  border-radius: 12px;
+  background: white;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 18px;
+}
+
+.webhook-select:focus {
+  outline: none;
+  border-color: ${COLORS.PRIMARY};
+  box-shadow: 0 0 0 4px rgba(52, 152, 219, 0.1);
+}
+
+.webhook-select:hover {
+  border-color: ${COLORS.BORDER_HOVER};
+}
+
+/* ボタン */
+.webhook-btn-container {
+  margin-top: 28px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.webhook-btn-cancel {
+  font-family: 'Noto Sans JP', sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  padding: 12px 24px;
+  border: 2px solid ${COLORS.BORDER};
+  border-radius: 10px;
+  background: white;
+  color: ${COLORS.TEXT_LIGHT};
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.webhook-btn-cancel:hover {
+  background: ${COLORS.BG_LIGHT};
+  border-color: ${COLORS.BORDER_HOVER};
+  color: ${COLORS.TEXT_MEDIUM};
+}
+
+.webhook-btn-execute {
+  font-family: 'Noto Sans JP', sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  padding: 12px 28px;
+  border: none;
+  border-radius: 10px;
+  background: ${COLORS.PRIMARY};
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
+}
+
+.webhook-btn-execute:hover {
+  background: ${COLORS.PRIMARY_HOVER};
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.5);
+}
+
+/* プログレス */
+.webhook-progress-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: ${COLORS.TEXT_DARK};
+  margin: 0 0 20px 0;
+}
+
+.webhook-progress-message {
+  font-size: 14px;
+  color: ${COLORS.TEXT_LIGHT};
+  margin-bottom: 16px;
+}
+
+.webhook-progress-bar-container {
+  width: 100%;
+  height: 12px;
+  background: ${COLORS.BORDER};
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.webhook-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, ${COLORS.PRIMARY} 0%, ${COLORS.PRIMARY_HOVER} 50%, ${COLORS.PRIMARY} 100%);
+  background-size: 200% 100%;
+  border-radius: 6px;
+  transition: width 0.3s ease;
+  animation: shimmer 2s infinite linear;
 }
 
 .webhook-progress-text {
-    margin-top: 12px;
-    text-align: center;
-    font-size: 14px;
-    font-weight: 500;
-    color: #475569;
+  margin-top: 12px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+  color: ${COLORS.TEXT_MEDIUM};
 }
 
 .webhook-progress-percent {
-    font-size: 32px;
-    font-weight: 600;
-    color: #3498db;
+  font-size: 32px;
+  font-weight: 600;
+  color: ${COLORS.PRIMARY};
 }
 
+/* エラーダイアログ */
 .webhook-error-dialog {
-    font-family: 'Noto Sans JP', sans-serif;
-    background: linear-gradient(145deg, #ffffff 0%, #fef2f2 100%);
-    padding: 32px;
-    border-radius: 20px;
-    min-width: 500px;
-    max-width: 700px;
-    max-height: 80vh;
-    box-shadow:
-        0 25px 50px -12px rgba(0, 0, 0, 0.25),
-        0 0 0 1px rgba(255, 255, 255, 0.1);
-    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  font-family: 'Noto Sans JP', sans-serif;
+  background: linear-gradient(145deg, ${COLORS.BG_WHITE} 0%, #fef2f2 100%);
+  padding: 32px;
+  border-radius: 20px;
+  min-width: 500px;
+  max-width: 700px;
+  max-height: 80vh;
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .webhook-error-title {
-    font-size: 20px;
-    font-weight: 600;
-    color: #dc2626;
-    margin: 0 0 16px 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+  font-size: 20px;
+  font-weight: 600;
+  color: ${COLORS.ERROR};
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .webhook-error-title::before {
-    content: '';
-    display: inline-block;
-    width: 4px;
-    height: 24px;
-    background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
-    border-radius: 2px;
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 24px;
+  background: linear-gradient(180deg, ${COLORS.ERROR_LIGHT} 0%, ${COLORS.ERROR} 100%);
+  border-radius: 2px;
 }
 
 .webhook-error-content {
-    background: #1e293b;
-    color: #e2e8f0;
-    padding: 16px;
-    border-radius: 12px;
-    font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 12px;
-    line-height: 1.6;
-    overflow: auto;
-    max-height: 400px;
-    white-space: pre-wrap;
-    word-break: break-all;
+  background: ${COLORS.BG_DARK};
+  color: ${COLORS.BORDER};
+  padding: 16px;
+  border-radius: 12px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow: auto;
+  max-height: 400px;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .webhook-error-close {
-    font-family: 'Noto Sans JP', sans-serif;
-    font-weight: 500;
-    font-size: 14px;
-    padding: 12px 28px;
-    border: none;
-    border-radius: 10px;
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-    color: white;
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
-    margin-top: 20px;
-    display: block;
-    margin-left: auto;
+  font-family: 'Noto Sans JP', sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  padding: 12px 28px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, ${COLORS.ERROR_LIGHT} 0%, ${COLORS.ERROR} 100%);
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
+  margin-top: 20px;
+  display: block;
+  margin-left: auto;
 }
 
 .webhook-error-close:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(220, 38, 38, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(220, 38, 38, 0.5);
 }
 
+/* API情報パネル */
 .dual-api-info-link {
-    color: #3498db;
-    cursor: pointer;
-    font-size: 13px;
-    text-align: center;
-    margin: 5px 0;
-    text-decoration: underline;
-    transition: color 0.2s ease;
+  color: ${COLORS.PRIMARY};
+  cursor: pointer;
+  font-size: 13px;
+  text-align: center;
+  margin: 5px 0;
+  text-decoration: underline;
+  transition: color 0.2s ease;
 }
 
 .dual-api-info-link:hover {
-    color: #2980b9;
+  color: ${COLORS.PRIMARY_HOVER};
 }
 
 .dual-api-info-panel {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 12px;
-    margin-top: 10px;
-    font-size: 13px;
-    display: none;
+  background: ${COLORS.BG_LIGHT};
+  border: 1px solid ${COLORS.BORDER};
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  display: none;
 }
 
 .dual-api-info-panel.open {
-    display: block;
+  display: block;
 }
 
 .dual-api-info-section {
-    margin-bottom: 10px;
+  margin-bottom: 10px;
 }
 
 .dual-api-info-section:last-child {
-    margin-bottom: 0;
+  margin-bottom: 0;
 }
 
 .dual-api-info-title {
-    font-weight: 600;
-    color: #1e293b;
-    margin-bottom: 6px;
-    padding-bottom: 4px;
-    border-bottom: 2px solid;
+  font-weight: 600;
+  color: ${COLORS.TEXT_DARK};
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid;
 }
 
 .dual-api-info-title.bulk {
-    border-color: #3498db;
+  border-color: ${COLORS.PRIMARY};
 }
 
 .dual-api-info-title.single {
-    border-color: #e74c3c;
+  border-color: ${COLORS.DANGER};
 }
 
 .dual-api-info-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    color: #475569;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  color: ${COLORS.TEXT_MEDIUM};
 }
 
 .dual-api-info-list li {
-    padding: 2px 0;
-    padding-left: 1em;
-    text-indent: -1em;
+  padding: 2px 0;
+  padding-left: 1em;
+  text-indent: -1em;
 }
 
 .dual-api-info-list li::before {
-    content: "・";
+  content: "・";
 }
 
+/* カウントダウン */
 .countdown-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(15, 23, 42, 0.8);
-    backdrop-filter: blur(8px);
-    z-index: 10001;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: ${COLORS.OVERLAY_DARK};
+  backdrop-filter: blur(8px);
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
 }
 
 .countdown-container {
-    position: relative;
-    width: 200px;
-    height: 200px;
+  position: relative;
+  width: 200px;
+  height: 200px;
 }
 
 .countdown-svg {
-    transform: rotate(-90deg);
-    width: 200px;
-    height: 200px;
+  transform: rotate(-90deg);
+  width: 200px;
+  height: 200px;
 }
 
 .countdown-circle-bg {
-    fill: none;
-    stroke: #334155;
-    stroke-width: 8;
+  fill: none;
+  stroke: #334155;
+  stroke-width: 8;
 }
 
 .countdown-circle-progress {
-    fill: none;
-    stroke: url(#countdown-gradient);
-    stroke-width: 8;
-    stroke-linecap: round;
-    transition: stroke-dashoffset 1s linear;
+  fill: none;
+  stroke: url(#countdown-gradient);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
 }
 
 .countdown-text {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
 }
 
 .countdown-seconds {
-    font-size: 48px;
-    font-weight: 700;
-    color: white;
-    line-height: 1;
+  font-size: 48px;
+  font-weight: 700;
+  color: white;
+  line-height: 1;
 }
 
 .countdown-label {
-    font-size: 14px;
-    color: #94a3b8;
-    margin-top: 4px;
+  font-size: 14px;
+  color: ${COLORS.TEXT_MUTED};
+  margin-top: 4px;
 }
 
 .countdown-message {
-    color: #e2e8f0;
-    font-size: 14px;
-    margin-top: 24px;
-    text-align: center;
+  color: ${COLORS.BORDER};
+  font-size: 14px;
+  margin-top: 24px;
+  text-align: center;
 }
 `;
+
+  // ========================================
+  // ユーティリティ関数
+  // ========================================
+
+  /** スタイルシートを注入 */
+  function injectStyles(): void {
+    if (document.getElementById(CONFIG.STYLE_ID)) return;
+
+    const styleSheet = document.createElement("style");
+    styleSheet.id = CONFIG.STYLE_ID;
+    styleSheet.textContent = CSS_STYLES;
     document.head.appendChild(styleSheet);
+  }
+
+  /** オーバーレイをアニメーション付きで閉じる */
+  function closeOverlay(overlay: HTMLElement, duration: number = 200): void {
+    overlay.style.animation = "fadeIn 0.2s ease reverse forwards";
+    setTimeout(() => overlay.remove(), duration);
+  }
+
+  /** 遅延実行 */
+  function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   // ========================================
   // フィールド関連
   // ========================================
+
+  /** アプリのフィールド情報を取得 */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function getFields(appId: number): Promise<Record<string, any>> {
     const resp = await kintone.api("/k/v1/app/form/fields.json", "GET", {
@@ -425,26 +519,24 @@
     return resp.properties;
   }
 
+  /** 編集可能なフィールドをフィルタリング */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function filterEditableFields(fields: Record<string, any>): FieldInfo[] {
+    return Object.entries(fields)
+      .filter(([, field]) =>
+        EDITABLE_FIELD_TYPES.includes(field.type as (typeof EDITABLE_FIELD_TYPES)[number])
+      )
+      .map(([code, field]) => ({
+        code,
+        label: field.label,
+        type: field.type,
+      }));
+  }
+
+  /** フィールド選択ダイアログを表示 */
   async function showFieldSelectDialog(appId: number): Promise<string | null> {
     const fields = await getFields(appId);
-
-    const editableTypes = [
-      "SINGLE_LINE_TEXT",
-      "MULTI_LINE_TEXT",
-      "RICH_TEXT",
-      "NUMBER",
-      "DROP_DOWN",
-      "RADIO_BUTTON",
-      "CHECK_BOX",
-      "MULTI_SELECT",
-      "DATE",
-      "TIME",
-      "DATETIME",
-      "LINK",
-    ];
-    const editableFields = Object.entries(fields)
-      .filter(([, field]) => editableTypes.includes(field.type))
-      .map(([code, field]) => ({ code, label: field.label, type: field.type }));
+    const editableFields = filterEditableFields(fields);
 
     return new Promise((resolve) => {
       const overlay = document.createElement("div");
@@ -474,8 +566,7 @@
       cancelButton.className = "webhook-btn-cancel";
       cancelButton.textContent = "キャンセル";
       cancelButton.addEventListener("click", () => {
-        overlay.style.animation = "fadeIn 0.2s ease reverse forwards";
-        setTimeout(() => document.body.removeChild(overlay), 200);
+        closeOverlay(overlay);
         resolve(null);
       });
 
@@ -483,8 +574,7 @@
       okButton.className = "webhook-btn-execute";
       okButton.textContent = "実行";
       okButton.addEventListener("click", () => {
-        overlay.style.animation = "fadeIn 0.2s ease reverse forwards";
-        setTimeout(() => document.body.removeChild(overlay), 200);
+        closeOverlay(overlay);
         resolve(select.value);
       });
 
@@ -500,9 +590,11 @@
   }
 
   // ========================================
-  // エラーダイアログ
+  // ダイアログ関連
   // ========================================
-  function showErrorDialog(error: unknown) {
+
+  /** エラーダイアログを表示 */
+  function showErrorDialog(error: unknown): void {
     const overlay = document.createElement("div");
     overlay.className = "webhook-overlay";
 
@@ -520,10 +612,7 @@
     const closeButton = document.createElement("button");
     closeButton.className = "webhook-error-close";
     closeButton.textContent = "閉じる";
-    closeButton.addEventListener("click", () => {
-      overlay.style.animation = "fadeIn 0.2s ease reverse forwards";
-      setTimeout(() => document.body.removeChild(overlay), 200);
-    });
+    closeButton.addEventListener("click", () => closeOverlay(overlay));
 
     dialog.appendChild(title);
     dialog.appendChild(content);
@@ -532,14 +621,7 @@
     document.body.appendChild(overlay);
   }
 
-  // ========================================
-  // プログレスダイアログ
-  // ========================================
-  interface ProgressDialog {
-    update: (current: number, total: number, message?: string) => void;
-    close: () => void;
-  }
-
+  /** プログレスダイアログを表示 */
   function showProgressDialog(dialogTitle: string): ProgressDialog {
     const overlay = document.createElement("div");
     overlay.className = "webhook-overlay";
@@ -578,25 +660,17 @@
       update: (current: number, total: number, message?: string) => {
         const percent = Math.round((current / total) * 100);
         progressBar.style.width = `${percent}%`;
-        percentText.innerHTML = `<span class="webhook-progress-percent">${percent}</span>% <span style="color:#94a3b8">(${current}/${total})</span>`;
+        percentText.innerHTML = `<span class="webhook-progress-percent">${percent}</span>% <span style="color:${COLORS.TEXT_MUTED}">(${current}/${total})</span>`;
         if (message) {
           messageEl.textContent = message;
         }
       },
-      close: () => {
-        overlay.style.animation = "fadeIn 0.3s ease reverse forwards";
-        setTimeout(() => document.body.removeChild(overlay), 300);
-      },
+      close: () => closeOverlay(overlay, 300),
     };
   }
 
-  // ========================================
-  // カウントダウン表示
-  // ========================================
-  async function showCountdown(
-    seconds: number,
-    message: string
-  ): Promise<void> {
+  /** カウントダウンを表示 */
+  async function showCountdown(seconds: number, message: string): Promise<void> {
     const radius = 90;
     const circumference = 2 * Math.PI * radius;
 
@@ -607,8 +681,8 @@
         <svg class="countdown-svg" viewBox="0 0 200 200">
           <defs>
             <linearGradient id="countdown-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" style="stop-color:#3498db"/>
-              <stop offset="100%" style="stop-color:#2980b9"/>
+              <stop offset="0%" style="stop-color:${COLORS.PRIMARY}"/>
+              <stop offset="100%" style="stop-color:${COLORS.PRIMARY_HOVER}"/>
             </linearGradient>
           </defs>
           <circle class="countdown-circle-bg" cx="100" cy="100" r="${radius}"/>
@@ -625,36 +699,34 @@
     `;
     document.body.appendChild(overlay);
 
-    const progressCircle = overlay.querySelector(
-      ".countdown-circle-progress"
-    ) as SVGCircleElement;
-    const secondsEl = overlay.querySelector(
-      ".countdown-seconds"
-    ) as HTMLElement;
+    const progressCircle = overlay.querySelector(".countdown-circle-progress") as SVGCircleElement;
+    const secondsEl = overlay.querySelector(".countdown-seconds") as HTMLElement;
 
     for (let sec = seconds; sec > 0; sec--) {
       secondsEl.textContent = sec.toString();
       const offset = circumference * (1 - sec / seconds);
       progressCircle.style.strokeDashoffset = offset.toString();
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await delay(1000);
     }
 
     secondsEl.textContent = "0";
     progressCircle.style.strokeDashoffset = circumference.toString();
 
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await delay(300);
     overlay.remove();
   }
 
   // ========================================
-  // レコード取得・更新
+  // レコード操作
   // ========================================
+
+  /** 全レコードを取得 */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function getAllRecords(appId: number): Promise<any[]> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const records: any[] = [];
     let offset = 0;
-    const limit = 500;
+    const limit = CONFIG.BATCH_SIZE.FETCH;
 
     const condition = kintone.app.getQueryCondition();
     const baseQuery = condition ? `${condition}` : "";
@@ -676,11 +748,8 @@
     return records;
   }
 
-  // records.json で一括更新
-  async function updateAllRecordsBulk(
-    appId: number,
-    fieldCode: string
-  ): Promise<void> {
+  /** records.json で一括更新 */
+  async function updateAllRecordsBulk(appId: number, fieldCode: string): Promise<void> {
     const progress = showProgressDialog("一括更新 (records.json)");
 
     try {
@@ -696,18 +765,14 @@
         },
       }));
 
-      const chunkSize = 100;
+      const chunkSize = CONFIG.BATCH_SIZE.BULK_UPDATE;
       const totalChunks = Math.ceil(updateRecords.length / chunkSize);
 
       for (let i = 0; i < updateRecords.length; i += chunkSize) {
         const chunk = updateRecords.slice(i, i + chunkSize);
         const currentChunk = Math.floor(i / chunkSize) + 1;
 
-        progress.update(
-          i,
-          updateRecords.length,
-          `更新中... (${currentChunk}/${totalChunks} バッチ)`
-        );
+        progress.update(i, updateRecords.length, `更新中... (${currentChunk}/${totalChunks} バッチ)`);
 
         await kintone.api("/k/v1/records.json", "PUT", {
           app: appId,
@@ -716,16 +781,11 @@
         console.log(`${i + chunk.length}/${updateRecords.length} 件更新完了`);
       }
 
-      progress.update(
-        updateRecords.length,
-        updateRecords.length,
-        "完了しました!"
-      );
+      progress.update(updateRecords.length, updateRecords.length, "完了しました!");
       console.log("一括更新完了");
 
-      setTimeout(() => {
-        progress.close();
-      }, 800);
+      await delay(800);
+      progress.close();
     } catch (error) {
       progress.close();
       console.error("エラー:", error);
@@ -733,7 +793,7 @@
     }
   }
 
-  // record.json で1件ずつ更新
+  /** record.json で1件ずつ更新 */
   async function updateAllRecordsSingle(
     appId: number,
     fieldCode: string,
@@ -743,18 +803,18 @@
 
     try {
       progress.update(0, 100, "レコード取得中...");
-      console.log(
-        `個別更新開始 (record.json) - フィールド: ${fieldCode}, 制限モード: ${rateLimitMode}`
-      );
+      console.log(`個別更新開始 (record.json) - フィールド: ${fieldCode}, 制限モード: ${rateLimitMode}`);
       const records = await getAllRecords(appId);
       console.log(`${records.length}件のレコードを個別更新します`);
 
+      const { REQUESTS_PER_MINUTE, WAIT_SECONDS } = CONFIG.RATE_LIMIT;
+
       for (let i = 0; i < records.length; i++) {
         // 60件ごとに1分待機（制限モード時）
-        if (rateLimitMode && i > 0 && i % 60 === 0) {
-          console.log(`回数制限のため60秒待機開始 (${i}件処理済み)`);
+        if (rateLimitMode && i > 0 && i % REQUESTS_PER_MINUTE === 0) {
+          console.log(`回数制限のため${WAIT_SECONDS}秒待機開始 (${i}件処理済み)`);
           await showCountdown(
-            60,
+            WAIT_SECONDS,
             `回数制限のため待機中... (${i}/${records.length}件処理済み)`
           );
           console.log("待機完了、処理再開");
@@ -762,11 +822,7 @@
 
         const record = records[i];
 
-        progress.update(
-          i,
-          records.length,
-          `更新中... (レコードID: ${record.$id.value})`
-        );
+        progress.update(i, records.length, `更新中... (レコードID: ${record.$id.value})`);
 
         await kintone.api("/k/v1/record.json", "PUT", {
           app: appId,
@@ -781,9 +837,8 @@
       progress.update(records.length, records.length, "完了しました!");
       console.log("個別更新完了");
 
-      setTimeout(() => {
-        progress.close();
-      }, 800);
+      await delay(800);
+      progress.close();
     } catch (error) {
       progress.close();
       console.error("エラー:", error);
@@ -794,61 +849,10 @@
   // ========================================
   // メインダイアログ
   // ========================================
-  function showDialog(): void {
-    const existingOverlay = document.getElementById(DIALOG_ID + "-overlay");
-    if (existingOverlay) existingOverlay.remove();
 
-    // オーバーレイ（モーダル背景）
-    const overlay = document.createElement("div");
-    overlay.id = DIALOG_ID + "-overlay";
-    overlay.className = "webhook-overlay";
-
-    const dialog = document.createElement("div");
-    dialog.id = DIALOG_ID;
-    dialog.className = "webhook-dialog";
-    dialog.style.cssText = `
-      width: 400px; display: flex; flex-direction: column; gap: 15px;
-    `;
-
-    // ダイアログを閉じる関数
-    const closeDialog = () => {
-      overlay.style.animation = "fadeIn 0.2s ease reverse forwards";
-      setTimeout(() => overlay.remove(), 200);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-
-    // ESCキーでダイアログを閉じる
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        closeDialog();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-
-    const title = document.createElement("h3");
-    title.textContent = LABEL;
-    title.style.textAlign = "center";
-    title.style.margin = "0 0 10px 0";
-    dialog.appendChild(title);
-
-    const description = document.createElement("p");
-    description.textContent =
-      "一覧しているレコードを対象に2種類のAPIで一括更新します。";
-    description.style.textAlign = "center";
-    description.style.color = "#666";
-    description.style.fontSize = "14px";
-    dialog.appendChild(description);
-
-    // 「APIの違いを見る」リンク
-    const infoLink = document.createElement("div");
-    infoLink.className = "dual-api-info-link";
-    infoLink.textContent = "APIの違いを見る ▼";
-    dialog.appendChild(infoLink);
-
-    // 情報パネル
-    const infoPanel = document.createElement("div");
-    infoPanel.className = "dual-api-info-panel";
-    infoPanel.innerHTML = `
+  /** API情報パネルのHTML */
+  function getApiInfoPanelHTML(): string {
+    return `
       <div class="dual-api-info-section">
         <div class="dual-api-info-title bulk">records.json（一括更新）</div>
         <ul class="dual-api-info-list">
@@ -865,10 +869,101 @@
           <li>処理速度: 低速（1件/回）</li>
         </ul>
       </div>
-      <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px;">
-        ※ Webhook回数制限: 1分間に60回まで（61回目以降は送信されません）
+      <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid ${COLORS.BORDER}; color: ${COLORS.TEXT_LIGHT}; font-size: 12px;">
+        ※ Webhook回数制限: 1分間に${CONFIG.RATE_LIMIT.REQUESTS_PER_MINUTE}回まで（${CONFIG.RATE_LIMIT.REQUESTS_PER_MINUTE + 1}回目以降は送信されません）
       </div>
     `;
+  }
+
+  /** ボタンスタイルを生成 */
+  function createButtonStyle(bgColor: string): string {
+    return `
+      padding: 12px 20px;
+      background: ${bgColor};
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    `;
+  }
+
+  /** ボタンのホバーエフェクトを設定 */
+  function setupButtonHover(
+    button: HTMLButtonElement,
+    baseColor: string,
+    hoverColor: string
+  ): void {
+    const shadowColor = baseColor.replace("#", "");
+    const r = parseInt(shadowColor.substring(0, 2), 16);
+    const g = parseInt(shadowColor.substring(2, 4), 16);
+    const b = parseInt(shadowColor.substring(4, 6), 16);
+
+    button.onmouseenter = () => {
+      button.style.transform = "translateY(-2px)";
+      button.style.boxShadow = `0 4px 15px rgba(${r}, ${g}, ${b}, 0.4)`;
+      button.style.background = hoverColor;
+    };
+    button.onmouseleave = () => {
+      button.style.transform = "translateY(0)";
+      button.style.boxShadow = "none";
+      button.style.background = baseColor;
+    };
+  }
+
+  /** メインダイアログを表示 */
+  function showDialog(): void {
+    const existingOverlay = document.getElementById(CONFIG.DIALOG_ID + "-overlay");
+    if (existingOverlay) existingOverlay.remove();
+
+    // オーバーレイ（モーダル背景）
+    const overlay = document.createElement("div");
+    overlay.id = CONFIG.DIALOG_ID + "-overlay";
+    overlay.className = "webhook-overlay";
+
+    const dialog = document.createElement("div");
+    dialog.id = CONFIG.DIALOG_ID;
+    dialog.className = "webhook-dialog";
+    dialog.style.cssText = "width: 400px; display: flex; flex-direction: column; gap: 15px;";
+
+    // ダイアログを閉じる関数
+    const closeDialog = () => {
+      closeOverlay(overlay);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+
+    // ESCキーでダイアログを閉じる
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        closeDialog();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+
+    // タイトル
+    const title = document.createElement("h3");
+    title.textContent = CONFIG.LABEL;
+    title.style.cssText = "text-align: center; margin: 0 0 10px 0;";
+    dialog.appendChild(title);
+
+    // 説明文
+    const description = document.createElement("p");
+    description.textContent = "一覧しているレコードを対象に2種類のAPIで一括更新します。";
+    description.style.cssText = `text-align: center; color: ${COLORS.TEXT_LIGHT}; font-size: 14px;`;
+    dialog.appendChild(description);
+
+    // 「APIの違いを見る」リンク
+    const infoLink = document.createElement("div");
+    infoLink.className = "dual-api-info-link";
+    infoLink.textContent = "APIの違いを見る ▼";
+    dialog.appendChild(infoLink);
+
+    // 情報パネル
+    const infoPanel = document.createElement("div");
+    infoPanel.className = "dual-api-info-panel";
+    infoPanel.innerHTML = getApiInfoPanelHTML();
     dialog.appendChild(infoPanel);
 
     // リンククリックでパネルをトグル
@@ -877,32 +972,15 @@
       infoLink.textContent = isOpen ? "APIの違いを見る ▲" : "APIの違いを見る ▼";
     };
 
+    // ボタンコンテナ
     const buttonContainer = document.createElement("div");
-    buttonContainer.style.display = "flex";
-    buttonContainer.style.flexDirection = "column";
-    buttonContainer.style.gap = "10px";
-    buttonContainer.style.marginTop = "10px";
+    buttonContainer.style.cssText = "display: flex; flex-direction: column; gap: 10px; margin-top: 10px;";
 
     // 一括更新ボタン (records.json)
     const bulkButton = document.createElement("button");
     bulkButton.textContent = "一括更新 (records.json)";
-    bulkButton.style.cssText = `
-      padding: 12px 20px;
-      background: #3498db;
-      color: white; border: none; border-radius: 8px; cursor: pointer;
-      font-size: 14px; font-weight: 500;
-      transition: all 0.3s ease;
-    `;
-    bulkButton.onmouseenter = () => {
-      bulkButton.style.transform = "translateY(-2px)";
-      bulkButton.style.boxShadow = "0 4px 15px rgba(52, 152, 219, 0.4)";
-      bulkButton.style.background = "#2980b9";
-    };
-    bulkButton.onmouseleave = () => {
-      bulkButton.style.transform = "translateY(0)";
-      bulkButton.style.boxShadow = "none";
-      bulkButton.style.background = "#3498db";
-    };
+    bulkButton.style.cssText = createButtonStyle(COLORS.PRIMARY);
+    setupButtonHover(bulkButton, COLORS.PRIMARY, COLORS.PRIMARY_HOVER);
     bulkButton.onclick = async () => {
       closeDialog();
       const appId = kintone.app.getId();
@@ -920,40 +998,24 @@
     // 個別更新ボタン (record.json)
     const singleButton = document.createElement("button");
     singleButton.textContent = "個別更新 (record.json)";
-    singleButton.style.cssText = `
-      padding: 12px 20px;
-      background: #e74c3c;
-      color: white; border: none; border-radius: 8px; cursor: pointer;
-      font-size: 14px; font-weight: 500;
-      transition: all 0.3s ease;
-    `;
-    singleButton.onmouseenter = () => {
-      singleButton.style.transform = "translateY(-2px)";
-      singleButton.style.boxShadow = "0 4px 15px rgba(231, 76, 60, 0.4)";
-      singleButton.style.background = "#c0392b";
-    };
-    singleButton.onmouseleave = () => {
-      singleButton.style.transform = "translateY(0)";
-      singleButton.style.boxShadow = "none";
-      singleButton.style.background = "#e74c3c";
-    };
+    singleButton.style.cssText = createButtonStyle(COLORS.DANGER);
+    setupButtonHover(singleButton, COLORS.DANGER, COLORS.DANGER_HOVER);
     buttonContainer.appendChild(singleButton);
 
     // 回数制限モードのチェックボックス
     const rateLimitContainer = document.createElement("label");
     rateLimitContainer.style.cssText = `
       display: flex; align-items: center; gap: 8px;
-      font-size: 13px; color: #64748b; cursor: pointer;
+      font-size: 13px; color: ${COLORS.TEXT_LIGHT}; cursor: pointer;
       padding: 4px 0;
     `;
+
     const rateLimitCheckbox = document.createElement("input");
     rateLimitCheckbox.type = "checkbox";
-    rateLimitCheckbox.style.cssText = `
-      width: 16px; height: 16px; cursor: pointer;
-      accent-color: #3498db;
-    `;
+    rateLimitCheckbox.style.cssText = `width: 16px; height: 16px; cursor: pointer; accent-color: ${COLORS.PRIMARY};`;
+
     const rateLimitLabel = document.createTextNode(
-      "回数制限モード（60件ごとに1分待機）"
+      `回数制限モード（${CONFIG.RATE_LIMIT.REQUESTS_PER_MINUTE}件ごとに${Math.floor(CONFIG.RATE_LIMIT.WAIT_SECONDS / 60)}分待機）`
     );
     rateLimitContainer.appendChild(rateLimitCheckbox);
     rateLimitContainer.appendChild(rateLimitLabel);
@@ -978,7 +1040,7 @@
     const closeButton = document.createElement("button");
     closeButton.textContent = "閉じる";
     closeButton.style.cssText = `
-      padding: 10px 20px; background: #e2e8f0; color: #475569;
+      padding: 10px 20px; background: ${COLORS.BORDER}; color: ${COLORS.TEXT_MEDIUM};
       border: none; border-radius: 8px; cursor: pointer;
       font-size: 14px; margin-top: 5px;
     `;
@@ -997,10 +1059,7 @@
   // ========================================
   injectStyles();
 
-  if (
-    document.readyState === "complete" ||
-    document.readyState === "interactive"
-  ) {
+  if (document.readyState === "complete" || document.readyState === "interactive") {
     showDialog();
   } else {
     document.addEventListener("DOMContentLoaded", showDialog);
