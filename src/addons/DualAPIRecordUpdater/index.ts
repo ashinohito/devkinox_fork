@@ -613,17 +613,34 @@
   // record.json で1件ずつ更新
   async function updateAllRecordsSingle(
     appId: number,
-    fieldCode: string
+    fieldCode: string,
+    rateLimitMode: boolean = false
   ): Promise<void> {
     const progress = showProgressDialog("個別更新 (record.json)");
 
     try {
       progress.update(0, 100, "レコード取得中...");
-      console.log(`個別更新開始 (record.json) - フィールド: ${fieldCode}`);
+      console.log(
+        `個別更新開始 (record.json) - フィールド: ${fieldCode}, 制限モード: ${rateLimitMode}`
+      );
       const records = await getAllRecords(appId);
       console.log(`${records.length}件のレコードを個別更新します`);
 
       for (let i = 0; i < records.length; i++) {
+        // 60件ごとに1分待機（制限モード時）
+        if (rateLimitMode && i > 0 && i % 60 === 0) {
+          console.log(`回数制限のため60秒待機開始 (${i}件処理済み)`);
+          for (let sec = 60; sec > 0; sec--) {
+            progress.update(
+              i,
+              records.length,
+              `回数制限のため待機中... 残り${sec}秒 (${i}/${records.length}件処理済み)`
+            );
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+          console.log("待機完了、処理再開");
+        }
+
         const record = records[i];
 
         progress.update(
@@ -711,6 +728,9 @@
           <li>処理速度: 低速（1件/回）</li>
         </ul>
       </div>
+      <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px;">
+        ※ 回数制限: 1分間に60回まで（61回目以降は送信されない）
+      </div>
     `;
     dialog.appendChild(infoPanel);
 
@@ -776,7 +796,31 @@
       singleButton.style.transform = "translateY(0)";
       singleButton.style.boxShadow = "none";
     };
+    buttonContainer.appendChild(singleButton);
+
+    // 回数制限モードのチェックボックス
+    const rateLimitContainer = document.createElement("label");
+    rateLimitContainer.style.cssText = `
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: #64748b; cursor: pointer;
+      padding: 4px 0;
+    `;
+    const rateLimitCheckbox = document.createElement("input");
+    rateLimitCheckbox.type = "checkbox";
+    rateLimitCheckbox.style.cssText = `
+      width: 16px; height: 16px; cursor: pointer;
+      accent-color: #f5576c;
+    `;
+    const rateLimitLabel = document.createTextNode(
+      "回数制限モード（60件ごとに1分待機）"
+    );
+    rateLimitContainer.appendChild(rateLimitCheckbox);
+    rateLimitContainer.appendChild(rateLimitLabel);
+    buttonContainer.appendChild(rateLimitContainer);
+
+    // 個別更新ボタンのクリックイベント
     singleButton.onclick = async () => {
+      const rateLimitMode = rateLimitCheckbox.checked;
       dialog.remove();
       const appId = kintone.app.getId();
       if (!appId) {
@@ -785,10 +829,9 @@
       }
       const fieldCode = await showFieldSelectDialog(appId);
       if (fieldCode) {
-        await updateAllRecordsSingle(appId, fieldCode);
+        await updateAllRecordsSingle(appId, fieldCode, rateLimitMode);
       }
     };
-    buttonContainer.appendChild(singleButton);
 
     // 閉じるボタン
     const closeButton = document.createElement("button");
