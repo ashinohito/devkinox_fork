@@ -1,7 +1,7 @@
-// コンテンツスクリプト: DualAPIRecordUpdater - 2種類のレコード一括更新
+// コンテンツスクリプト: dualAPIRecordUpdater - 2種類のレコード一括更新
 
 (() => {
-  console.log("[Kintone Dev Tools] DualAPIRecordUpdater loaded.");
+  console.log("[Kintone Dev Tools] dualAPIRecordUpdater loaded.");
 
   // ========================================
   // 定数
@@ -1051,7 +1051,7 @@
 
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
-    console.log("[Kintone Dev Tools] DualAPIRecordUpdater dialog shown.");
+    console.log("[Kintone Dev Tools] dualAPIRecordUpdater dialog shown.");
   }
 
   // ========================================
