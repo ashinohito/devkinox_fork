@@ -36,6 +36,42 @@
     yarn install
     ```
 
+## コード品質ツール (Biome)
+
+このプロジェクトでは、フォーマッターとリンターに [Biome](https://biomejs.dev/) を使用しています。
+
+### Biome 拡張機能のインストール
+
+VSCode / Cursor をご利用の場合は、Biome 拡張機能をインストールしてください。
+
+1. 拡張機能パネルを開く (`Ctrl+Shift+X`)
+2. 「Biome」を検索
+3. 「Biome」（biomejs.biome）をインストール
+
+保存時に自動フォーマットが実行されます。
+
+### コマンド
+
+```bash
+# lint チェック
+npm run lint
+
+# lint 自動修正
+npm run lint:fix
+
+# フォーマットチェック
+npm run format
+
+# フォーマット自動修正
+npm run format:fix
+
+# lint + フォーマット 両方チェック
+npm run check
+
+# lint + フォーマット 両方自動修正
+npm run check:fix
+```
+
 ## ビルド方法
 
 拡張機能を配布用にビルドします。

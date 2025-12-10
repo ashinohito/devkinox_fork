@@ -4,7 +4,7 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
 //TODO:余裕があればフロント、ビジネスロジ、APIロジごとにファイルを切り分けたい。
 (() => {
   console.log(
-    "[Kintone Dev Tools] createDummyData.js (content script) loaded."
+    "[Kintone Dev Tools] createDummyData.js (content script) loaded.",
   );
 
   const DIALOG_INPUT_ID = "kintone-dev-tools-get-records-input-dialog";
@@ -12,15 +12,13 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
 
   function showAlert(message: string) {
     alert(`${message}`);
-    console.log(
-      "[Kintone Dev Tools] showAlert."
-    );
+    console.log("[Kintone Dev Tools] showAlert.");
   }
 
   async function getAppInfoFromPage(): Promise<AppInfo | null> {
     if (typeof kintone === "undefined" || !kintone || !kintone.app) {
       console.warn(
-        "[Kintone Dev Tools] kintone.app object is not available at this moment."
+        "[Kintone Dev Tools] kintone.app object is not available at this moment.",
       );
       return null;
     }
@@ -38,17 +36,24 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (kintone as any).api.url("/k/v1/app.json", true),
         "GET",
-        { id: appId }
+        { id: appId },
       );
       console.log("[Kintone Dev Tools] App Details Response:", appDetails);
 
       // 2. アプリの閲覧画面を取得(型ガード付)
       function toPageType(value: string): PageType {
-        const validValues: PageType[] = ["APP_INDEX", "APP_CREATE", "APP_EDIT", "OTHER"];
-        return validValues.includes(value as PageType) ? (value as PageType) : "OTHER";
+        const validValues: PageType[] = [
+          "APP_INDEX",
+          "APP_CREATE",
+          "APP_EDIT",
+          "OTHER",
+        ];
+        return validValues.includes(value as PageType)
+          ? (value as PageType)
+          : "OTHER";
       }
       const rawPageType = await kintone.getPageType(); // string
-      console.log(rawPageType)
+      console.log(rawPageType);
       const pageType: PageType = toPageType(rawPageType.page);
 
       // 3. アプリのフィールド情報を取得 (運用環境)
@@ -59,17 +64,17 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (kintone as any).api.url("/k/v1/app/form/fields.json", true),
           "GET",
-          { app: appId, lang: "default" } // lang: default でユーザーの表示言語。live: falseでプレビュー環境。指定なしで運用環境
+          { app: appId, lang: "default" }, // lang: default でユーザーの表示言語。live: falseでプレビュー環境。指定なしで運用環境
         );
         console.log(
           "[Kintone Dev Tools] App Form Fields Response:",
-          fieldsResponse
+          fieldsResponse,
         );
         appFields = fieldsResponse.properties;
       } catch (fieldsError) {
         console.error(
           "[Kintone Dev Tools] Failed to get app form fields:",
-          fieldsError
+          fieldsError,
         );
       }
 
@@ -90,10 +95,14 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
     } catch (error) {
       console.error(
         "[Kintone Dev Tools] Failed to get app info via API:",
-        error
+        error,
       );
       // APIエラーが発生しても、アプリIDだけでも返す
-      return { appId: appId.toString(), appName: "（取得失敗）", pageType: "OTHER", };
+      return {
+        appId: appId.toString(),
+        appName: "（取得失敗）",
+        pageType: "OTHER",
+      };
     }
   }
 
@@ -122,7 +131,8 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
       dialog.appendChild(title);
 
       const subTitle = document.createElement("p");
-      subTitle.textContent = "注意:GitHub上のAWS CDKを使用してサーバーをデプロイした後に使用してください。";
+      subTitle.textContent =
+        "注意:GitHub上のAWS CDKを使用してサーバーをデプロイした後に使用してください。";
       subTitle.style.textAlign = "center";
       dialog.appendChild(subTitle);
 
@@ -182,7 +192,6 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
     });
   }
 
-
   function showSelectDammyData(): Promise<{
     isSmartDammyData: boolean;
   }> {
@@ -235,53 +244,58 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
   function insertLabelDammyData() {
     if (typeof kintone === "undefined" || !kintone || !kintone.app) {
       console.warn(
-        "[Kintone Dev Tools] kintone.app object is not available at this moment."
+        "[Kintone Dev Tools] kintone.app object is not available at this moment.",
       );
     }
     let appFields: { [fieldCode: string]: FieldProperty } | undefined;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const fieldsResponse = kintone.app.record.get();
-      console.log(
-        "[Kintone Dev Tools] App Form Local Fields:",
-        fieldsResponse
-      );
-      const record = fieldsResponse.record
+      console.log("[Kintone Dev Tools] App Form Local Fields:", fieldsResponse);
+      const record = fieldsResponse.record;
       for (const key in record) {
         const field = record[key];
         if (field.type === "SINGLE_LINE_TEXT" && field.value === undefined) {
           field.value = key;
         }
       }
-      console.log("Result", fieldsResponse)
-      kintone.app.record.set(fieldsResponse)
+      console.log("Result", fieldsResponse);
+      kintone.app.record.set(fieldsResponse);
     } catch (fieldsError) {
       console.error(
         "[Kintone Dev Tools] Failed to get app form fields:",
-        fieldsError
+        fieldsError,
       );
     }
   }
 
   async function main() {
-    console.log(`[Kintone Dev Tools] Running main function in genalateDummyData.js`);
+    console.log(
+      `[Kintone Dev Tools] Running main function in genalateDummyData.js`,
+    );
     try {
-      const appInfo = await getAppInfoFromPage();//アプリ情報の取得
+      const appInfo = await getAppInfoFromPage(); //アプリ情報の取得
       if (!appInfo) {
-        alert("Kintoneアプリ情報を取得できませんでした。ページが正しく読み込まれているか、Kintoneのアプリページであることを確認してください。");
-        throw new Error("[Kintone Dev Tools] Failed to get app info even in MAIN world.");
+        alert(
+          "Kintoneアプリ情報を取得できませんでした。ページが正しく読み込まれているか、Kintoneのアプリページであることを確認してください。",
+        );
+        throw new Error(
+          "[Kintone Dev Tools] Failed to get app info even in MAIN world.",
+        );
       }
-      console.log(appInfo.pageType)
-      switch (appInfo.pageType) {// 編集画面か一覧画面か分岐させる。
+      console.log(appInfo.pageType);
+      switch (
+        appInfo.pageType // 編集画面か一覧画面か分岐させる。
+      ) {
         case "APP_INDEX":
-          showAlert("「一覧画面上のダミーデータ作成」機能は現在準備中です。")
+          showAlert("「一覧画面上のダミーデータ作成」機能は現在準備中です。");
           break;
         case "APP_CREATE":
         case "APP_EDIT":
           showSelectDammyData().then(({ isSmartDammyData }) => {
             if (isSmartDammyData) {
               console.log("showDialogInputApiKey");
-              showAlert("「正確なダミーデータ作成」機能は開発中です。")
+              showAlert("「正確なダミーデータ作成」機能は開発中です。");
               // showDialogInputApiKey(appInfo.appId).then(({ status, kintoneApi, awsApi }) => {
               //   if (status) {
               //     console.log("入力値:", kintoneApi, awsApi);
@@ -290,20 +304,20 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
               //   }
               // });
             } else {
-              const result = confirm('ラベルダミーデータを作成しますか？');
+              const result = confirm("ラベルダミーデータを作成しますか？");
               if (!result) return;
-              insertLabelDammyData()
+              insertLabelDammyData();
             }
-          })
+          });
           break;
         case "OTHER":
-          showAlert("「ダミーデータ作成」機能は一覧画面と編集画面の機能です。")
+          showAlert("「ダミーデータ作成」機能は一覧画面と編集画面の機能です。");
           break;
       }
     } catch (error: unknown) {
       console.error(
         "[Kintone Dev Tools] Error in showAppInfo.js (content script) main function:",
-        error
+        error,
       );
       if (error instanceof Error) {
         alert(`エラーが発生しました: ${error.message}`);
