@@ -14,7 +14,7 @@ export type PageType = "APP_INDEX" | "APP_CREATE" | "APP_EDIT" | "OTHER";
 export interface AppInfo {
   appId: string;
   appName: string | null;
-  pageType :PageType;
+  pageType: PageType;
   spaceId?: string;
   threadId?: string;
   creatorName?: string;

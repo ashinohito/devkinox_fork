@@ -19,7 +19,7 @@ export async function loadAddons(): Promise<AddonDefinition[]> {
 
   for (const path in addonModules) {
     console.log(
-      `[kintone Dev Tools] Processing addon module from path: ${path}`
+      `[kintone Dev Tools] Processing addon module from path: ${path}`,
     );
     try {
       const module = await addonModules[path]();
@@ -34,13 +34,13 @@ export async function loadAddons(): Promise<AddonDefinition[]> {
       } else {
         console.warn(
           `[kintone Dev Tools] Invalid addon definition in ${path}. Required properties: id, label, iconClass. Module:`,
-          module
+          module,
         );
       }
     } catch (error) {
       console.error(
         `[kintone Dev Tools] Error loading addon from ${path}:`,
-        error
+        error,
       );
     }
   }
@@ -50,7 +50,7 @@ export async function loadAddons(): Promise<AddonDefinition[]> {
 
 export async function executeScriptByFile(
   tabId: number,
-  filePath: string
+  filePath: string,
 ): Promise<void> {
   try {
     await chrome.scripting.executeScript({
@@ -59,15 +59,15 @@ export async function executeScriptByFile(
       world: "MAIN",
     });
     console.log(
-      `[kintone Dev Tools] Executed script file: ${filePath} in MAIN world`
+      `[kintone Dev Tools] Executed script file: ${filePath} in MAIN world`,
     );
   } catch (error) {
     console.error(
       `[kintone Dev Tools] Error executing script file ${filePath} in MAIN world:`,
-      error
+      error,
     );
     alert(
-      `スクリプトファイル (${filePath}) の実行に失敗しました。コンソールを確認してください。`
+      `スクリプトファイル (${filePath}) の実行に失敗しました。コンソールを確認してください。`,
     );
     throw error;
   }

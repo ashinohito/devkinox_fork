@@ -10,7 +10,7 @@
   function showRecordsResultDialog(
     records: any[],
     appIdUsed: string,
-    queryUsed: string
+    queryUsed: string,
   ): void {
     const existingDialog = document.getElementById(DIALOG_RESULT_ID);
     if (existingDialog) existingDialog.remove();
@@ -72,7 +72,7 @@
   // レコード取得と結果表示処理
   async function fetchAndDisplayRecords(appId: string, query: string) {
     console.log(
-      `[Kintone Dev Tools] Attempting to fetch records for app: ${appId} with query: ${query}`
+      `[Kintone Dev Tools] Attempting to fetch records for app: ${appId} with query: ${query}`,
     );
     try {
       if (!appId) {
@@ -86,18 +86,18 @@
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (kintone as any).api.url("/k/v1/records.json", true),
         "GET",
-        params
+        params,
       );
       console.log(
         "[Kintone Dev Tools] Records fetched successfully:",
-        response.records
+        response.records,
       );
 
       if (response.records) {
         showRecordsResultDialog(response.records, appId, query);
       } else {
         alert(
-          "レコードの取得に失敗しました。レスポンスにレコードが含まれていません。"
+          "レコードの取得に失敗しました。レスポンスにレコードが含まれていません。",
         );
       }
     } catch (error) {
@@ -152,7 +152,7 @@
       }
     } catch (e) {
       console.warn(
-        "[Kintone Dev Tools] Could not get current app ID for default value."
+        "[Kintone Dev Tools] Could not get current app ID for default value.",
       );
     }
     dialog.appendChild(appIdLabel);

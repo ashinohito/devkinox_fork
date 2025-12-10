@@ -15,7 +15,7 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
   async function getAppInfoFromPage(): Promise<AppInfo | null> {
     if (typeof kintone === "undefined" || !kintone || !kintone.app) {
       console.warn(
-        "[Kintone Dev Tools] kintone.app object is not available at this moment."
+        "[Kintone Dev Tools] kintone.app object is not available at this moment.",
       );
       return null;
     }
@@ -33,7 +33,7 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (kintone as any).api.url("/k/v1/app.json", true),
         "GET",
-        { id: appId }
+        { id: appId },
       );
       console.log("[Kintone Dev Tools] App Details Response:", appDetails);
 
@@ -45,17 +45,17 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (kintone as any).api.url("/k/v1/app/form/fields.json", true),
           "GET",
-          { app: appId, lang: "default" } // lang: default でユーザーの表示言語。live: falseでプレビュー環境。指定なしで運用環境
+          { app: appId, lang: "default" }, // lang: default でユーザーの表示言語。live: falseでプレビュー環境。指定なしで運用環境
         );
         console.log(
           "[Kintone Dev Tools] App Form Fields Response:",
-          fieldsResponse
+          fieldsResponse,
         );
         appFields = fieldsResponse.properties;
       } catch (fieldsError) {
         console.error(
           "[Kintone Dev Tools] Failed to get app form fields:",
-          fieldsError
+          fieldsError,
         );
         // フィールド情報取得に失敗しても、他の情報は返す
       }
@@ -76,7 +76,7 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
     } catch (error) {
       console.error(
         "[Kintone Dev Tools] Failed to get app info via API:",
-        error
+        error,
       );
       // APIエラーが発生しても、アプリIDだけでも返す
       return { appId: appId.toString(), appName: "（取得失敗）" };
@@ -86,10 +86,10 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
   function showDialogOnPage(info: AppInfo): void {
     console.log("[Kintone Dev Tools] showDialogOnPage called with info:", info);
     const existingDialog = document.getElementById(
-      "kintone-dev-tools-app-info-dialog"
+      "kintone-dev-tools-app-info-dialog",
     );
     const existingOverlay = document.getElementById(
-      "kintone-dev-tools-app-info-overlay"
+      "kintone-dev-tools-app-info-overlay",
     );
     if (existingDialog) existingDialog.remove();
     if (existingOverlay) existingOverlay.remove();
@@ -100,7 +100,7 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.3); z-index: 2147483646;
     `;
-    
+
     const dialog = document.createElement("div");
     dialog.id = "kintone-dev-tools-app-info-dialog";
     // eslint-disable-next-line prettier/prettier
@@ -123,12 +123,12 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
     }
     if (info.createdAt && info.creatorName) {
       htmlContent += `<p>作成日時: <strong>${new Date(
-        info.createdAt
+        info.createdAt,
       ).toLocaleString()}</strong> (作成者: ${info.creatorName})</p>`;
     }
     if (info.modifiedAt && info.modifierName) {
       htmlContent += `<p>更新日時: <strong>${new Date(
-        info.modifiedAt
+        info.modifiedAt,
       ).toLocaleString()}</strong> (更新者: ${info.modifierName})</p>`;
     }
 
@@ -162,7 +162,7 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
 
     content.innerHTML = htmlContent;
     dialog.appendChild(content);
-    
+
     // 区切り線を追加
     const separator = document.createElement("hr");
     separator.style.cssText = `
@@ -171,7 +171,7 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
       border-top: 2px solid #e0e0e0;
     `;
     dialog.appendChild(separator);
-    
+
     // 閉じるボタンをダイアログ内の一番下に表示
     const closeButton = document.createElement("button");
     closeButton.textContent = "閉じる";
@@ -193,18 +193,18 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
       overlay.remove();
     };
     dialog.appendChild(closeButton);
-    
+
     // オーバーレイをクリックしたら閉じる
     overlay.onclick = () => {
       dialog.remove();
       overlay.remove();
     };
-    
+
     // オーバーレイとダイアログを追加
     document.body.appendChild(overlay);
     document.body.appendChild(dialog);
     console.log(
-      "[Kintone Dev Tools] Dialog appended to body by content script."
+      "[Kintone Dev Tools] Dialog appended to body by content script.",
     );
   }
 
@@ -220,16 +220,16 @@ import type { AppInfo, FieldProperty } from "./types"; // AppInfo型はまだ使
         // world: 'MAIN' であれば、通常はDOMContentLoaded後には取得できるはず
         // それでもダメな場合はエラーとして扱う
         console.error(
-          "[Kintone Dev Tools] Failed to get app info even in MAIN world."
+          "[Kintone Dev Tools] Failed to get app info even in MAIN world.",
         );
         alert(
-          "Kintoneアプリ情報を取得できませんでした。ページが正しく読み込まれているか、Kintoneのアプリページであることを確認してください。"
+          "Kintoneアプリ情報を取得できませんでした。ページが正しく読み込まれているか、Kintoneのアプリページであることを確認してください。",
         );
       }
     } catch (error: unknown) {
       console.error(
         "[Kintone Dev Tools] Error in showAppInfo.js (content script) main function:",
-        error
+        error,
       );
       if (error instanceof Error) {
         alert(`エラーが発生しました: ${error.message}`);
