@@ -506,6 +506,21 @@
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  /** ゲストスペースIDを取得（通常スペースの場合はnull） */
+  function getGuestSpaceId(): number | null {
+    const match = location.pathname.match(/\/k\/guest\/(\d+)\//);
+    return match ? parseInt(match[1], 10) : null;
+  }
+
+  /** APIエンドポイントを生成（ゲストスペース対応） */
+  function getApiEndpoint(path: string): string {
+    const guestSpaceId = getGuestSpaceId();
+    if (guestSpaceId) {
+      return `/k/guest/${guestSpaceId}/v1/${path}`;
+    }
+    return `/k/v1/${path}`;
+  }
+
   // ========================================
   // フィールド関連
   // ========================================
@@ -513,7 +528,7 @@
   /** アプリのフィールド情報を取得 */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function getFields(appId: number): Promise<Record<string, any>> {
-    const resp = await kintone.api("/k/v1/app/form/fields.json", "GET", {
+    const resp = await kintone.api(getApiEndpoint("app/form/fields.json"), "GET", {
       app: appId,
     });
     return resp.properties;
@@ -736,7 +751,7 @@
         ? `${baseQuery} limit ${limit} offset ${offset}`
         : `limit ${limit} offset ${offset}`;
 
-      const resp = await kintone.api("/k/v1/records.json", "GET", {
+      const resp = await kintone.api(getApiEndpoint("records.json"), "GET", {
         app: appId,
         query: query,
       });
@@ -774,7 +789,7 @@
 
         progress.update(i, updateRecords.length, `更新中... (${currentChunk}/${totalChunks} バッチ)`);
 
-        await kintone.api("/k/v1/records.json", "PUT", {
+        await kintone.api(getApiEndpoint("records.json"), "PUT", {
           app: appId,
           records: chunk,
         });
@@ -824,7 +839,7 @@
 
         progress.update(i, records.length, `更新中... (レコードID: ${record.$id.value})`);
 
-        await kintone.api("/k/v1/record.json", "PUT", {
+        await kintone.api(getApiEndpoint("record.json"), "PUT", {
           app: appId,
           id: record.$id.value,
           record: {
