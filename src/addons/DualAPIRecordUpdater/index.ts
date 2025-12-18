@@ -11,7 +11,7 @@
     DIALOG_ID: "kintone-dev-tools-dual-api-record-updater-dialog",
     STYLE_ID: "dual-api-record-updater-styles",
     RATE_LIMIT: {
-      REQUESTS_PER_MINUTE: 60,
+      REQUESTS_PER_MINUTE: 50,
       WAIT_SECONDS: 60,
     },
     BATCH_SIZE: {
@@ -812,7 +812,8 @@
   async function updateAllRecordsSingle(
     appId: number,
     fieldCode: string,
-    rateLimitMode: boolean = false
+    rateLimitMode: boolean = false,
+    requestsPerBatch: number = CONFIG.RATE_LIMIT.REQUESTS_PER_MINUTE
   ): Promise<void> {
     const progress = showProgressDialog("個別更新 (record.json)");
 
@@ -822,11 +823,11 @@
       const records = await getAllRecords(appId);
       console.log(`${records.length}件のレコードを個別更新します`);
 
-      const { REQUESTS_PER_MINUTE, WAIT_SECONDS } = CONFIG.RATE_LIMIT;
+      const { WAIT_SECONDS } = CONFIG.RATE_LIMIT;
 
       for (let i = 0; i < records.length; i++) {
-        // 60件ごとに1分待機（制限モード時）
-        if (rateLimitMode && i > 0 && i % REQUESTS_PER_MINUTE === 0) {
+        // N件ごとに1分待機（制限モード時）
+        if (rateLimitMode && i > 0 && i % requestsPerBatch === 0) {
           console.log(`回数制限のため${WAIT_SECONDS}秒待機開始 (${i}件処理済み)`);
           await showCountdown(
             WAIT_SECONDS,
@@ -1017,28 +1018,48 @@
     setupButtonHover(singleButton, COLORS.DANGER, COLORS.DANGER_HOVER);
     buttonContainer.appendChild(singleButton);
 
-    // 回数制限モードのチェックボックス
-    const rateLimitContainer = document.createElement("label");
+    // 回数制限モードのチェックボックスと件数入力
+    const rateLimitContainer = document.createElement("div");
     rateLimitContainer.style.cssText = `
       display: flex; align-items: center; gap: 8px;
-      font-size: 13px; color: ${COLORS.TEXT_LIGHT}; cursor: pointer;
-      padding: 4px 0;
+      font-size: 13px; color: ${COLORS.TEXT_LIGHT};
+      padding: 4px 0; flex-wrap: wrap;
     `;
+
+    const rateLimitCheckboxLabel = document.createElement("label");
+    rateLimitCheckboxLabel.style.cssText = `display: flex; align-items: center; gap: 6px; cursor: pointer;`;
 
     const rateLimitCheckbox = document.createElement("input");
     rateLimitCheckbox.type = "checkbox";
+    rateLimitCheckbox.checked = true;
     rateLimitCheckbox.style.cssText = `width: 16px; height: 16px; cursor: pointer; accent-color: ${COLORS.PRIMARY};`;
 
-    const rateLimitLabel = document.createTextNode(
-      `回数制限モード（${CONFIG.RATE_LIMIT.REQUESTS_PER_MINUTE}件ごとに${Math.floor(CONFIG.RATE_LIMIT.WAIT_SECONDS / 60)}分待機）`
+    rateLimitCheckboxLabel.appendChild(rateLimitCheckbox);
+    rateLimitCheckboxLabel.appendChild(document.createTextNode("回数制限モード"));
+
+    const rateLimitInput = document.createElement("input");
+    rateLimitInput.type = "number";
+    rateLimitInput.min = "1";
+    rateLimitInput.max = "60";
+    rateLimitInput.value = CONFIG.RATE_LIMIT.REQUESTS_PER_MINUTE.toString();
+    rateLimitInput.style.cssText = `
+      width: 50px; padding: 4px 8px; border: 1px solid ${COLORS.BORDER};
+      border-radius: 4px; font-size: 13px; text-align: center;
+    `;
+
+    const rateLimitSuffix = document.createTextNode(
+      `件ごとに${Math.floor(CONFIG.RATE_LIMIT.WAIT_SECONDS / 60)}分待機`
     );
-    rateLimitContainer.appendChild(rateLimitCheckbox);
-    rateLimitContainer.appendChild(rateLimitLabel);
+
+    rateLimitContainer.appendChild(rateLimitCheckboxLabel);
+    rateLimitContainer.appendChild(rateLimitInput);
+    rateLimitContainer.appendChild(rateLimitSuffix);
     buttonContainer.appendChild(rateLimitContainer);
 
     // 個別更新ボタンのクリックイベント
     singleButton.onclick = async () => {
       const rateLimitMode = rateLimitCheckbox.checked;
+      const requestsPerBatch = Math.min(60, Math.max(1, parseInt(rateLimitInput.value, 10) || CONFIG.RATE_LIMIT.REQUESTS_PER_MINUTE));
       closeDialog();
       const appId = kintone.app.getId();
       if (!appId) {
@@ -1047,7 +1068,7 @@
       }
       const fieldCode = await showFieldSelectDialog(appId);
       if (fieldCode) {
-        await updateAllRecordsSingle(appId, fieldCode, rateLimitMode);
+        await updateAllRecordsSingle(appId, fieldCode, rateLimitMode, requestsPerBatch);
       }
     };
 
