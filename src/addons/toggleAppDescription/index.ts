@@ -27,7 +27,7 @@ declare const kintone: Kintone;
   const MESSAGES = {
     DIALOG_TITLE: 'アプリ説明欄の表示/非表示',
     CURRENT_APP_ID: '現在のアプリID: ',
-    DESCRIPTION: 'アプリ説明欄を自動的に閉じたいアプリのIDをカンマ区切りで入力してください。',
+    DESCRIPTION: '説明欄を自動的に非表示にしたいアプリIDをカンマ区切りで入力してください。',
     INPUT_LABEL: 'アプリID (カンマ区切り)',
     INPUT_PLACEHOLDER: '例: 1, 54, 67',
     BUTTON_CLOSE: '閉じる',
@@ -158,7 +158,7 @@ declare const kintone: Kintone;
       borderRadius: '8px',
       boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
       zIndex: STYLES.DIALOG_Z_INDEX.toString(),
-      width: '450px',
+      width: '520px',
       display: 'flex',
       flexDirection: 'column',
       gap: '15px',
