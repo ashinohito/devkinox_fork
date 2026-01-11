@@ -38,7 +38,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           currentUrl.startsWith("edge://")
         ) {
           alert(
-            "この機能は chrome:// や edge:// のページでは使用できません。\nKintoneのアプリページで実行してください。"
+            "この機能は chrome:// や edge:// のページでは使用できません。\nKintoneのアプリページで実行してください。",
           );
           return;
         }
@@ -48,28 +48,28 @@ document.addEventListener("DOMContentLoaded", async () => {
           !currentUrl.includes(".kintone.cn/")
         ) {
           alert(
-            "この機能はKintoneのページでのみ使用できます。\n現在のページがKintoneのドメインであることを確認してください。"
+            "この機能はKintoneのページでのみ使用できます。\n現在のページがKintoneのドメインであることを確認してください。",
           );
           return;
         }
 
         console.log(
-          `[kintone Dev Tools] Injecting script: ${addon.contentScriptFile} for addon: ${addon.label} on URL: ${tab.url}`
+          `[kintone Dev Tools] Injecting script: ${addon.contentScriptFile} for addon: ${addon.label} on URL: ${tab.url}`,
         );
         try {
           await executeScriptByFile(tab.id, addon.contentScriptFile);
         } catch (e) {
           console.error(
             `[kintone Dev Tools] Failed to execute script for ${addon.label} on URL: ${tab.url}`,
-            e
+            e,
           );
         }
       } else {
         console.warn(
-          "[kintone Dev Tools] Could not get current tab or tab.url is undefined."
+          "[kintone Dev Tools] Could not get current tab or tab.url is undefined.",
         );
         alert(
-          "現在のタブ情報を取得できませんでした。ブラウザを再起動するか、拡張機能を再読み込みしてみてください。"
+          "現在のタブ情報を取得できませんでした。ブラウザを再起動するか、拡張機能を再読み込みしてみてください。",
         );
       }
     };
