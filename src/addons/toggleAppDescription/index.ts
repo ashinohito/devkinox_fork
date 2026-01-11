@@ -1,10 +1,10 @@
 // コンテンツスクリプト: アプリ説明欄の表示/非表示
 
-declare const kintone: any;
+import type { Kintone } from './types';
+
+declare const kintone: Kintone;
 
 (() => {
-  console.log('[Kintone Dev Tools] toggleAppDescription.js (content script) loaded.');
-
   const DIALOG_ID = 'kintone-dev-tools-toggle-app-description-dialog';
   const STORAGE_KEY = 'kintone-dev-tools-hidden-app-ids';
 
@@ -34,7 +34,7 @@ declare const kintone: any;
 
   // アプリ説明欄を非表示にする
   async function hideAppDescription(): Promise<void> {
-    if (typeof kintone === 'undefined' || !kintone.app) {
+    if (!kintone?.app) {
       console.warn('[Kintone Dev Tools] kintone.app is not available.');
       return;
     }
@@ -52,7 +52,7 @@ declare const kintone: any;
 
   // アプリ説明欄を表示する
   async function showAppDescription(): Promise<void> {
-    if (typeof kintone === 'undefined' || !kintone.app) {
+    if (!kintone?.app) {
       console.warn('[Kintone Dev Tools] kintone.app is not available.');
       return;
     }
@@ -95,19 +95,20 @@ declare const kintone: any;
       if (appId) {
         currentAppId = appId.toString();
       }
-    } catch (e) {
-      console.warn('[Kintone Dev Tools] Could not get current app ID.');
+    } catch (_e) {
+      // アプリID取得失敗時は空文字列のまま
     }
 
     if (currentAppId) {
       const currentAppLabel = document.createElement('p');
-      currentAppLabel.innerHTML = `現在のアプリID: <strong>${currentAppId}</strong>`;
+      currentAppLabel.textContent = `現在のアプリID: ${currentAppId}`;
       currentAppLabel.style.fontSize = '0.9em';
       currentAppLabel.style.margin = '0 0 10px 0';
       currentAppLabel.style.padding = '8px';
       currentAppLabel.style.background = '#f0f8ff';
       currentAppLabel.style.border = '1px solid #b0d4f1';
       currentAppLabel.style.borderRadius = '4px';
+      currentAppLabel.style.fontWeight = 'bold';
       dialog.appendChild(currentAppLabel);
     }
 
@@ -182,7 +183,7 @@ declare const kintone: any;
         newHiddenAppIds = inputValue
           .split(',')
           .map((id) => parseInt(id.trim(), 10))
-          .filter((id) => !isNaN(id) && id > 0);
+          .filter((id) => !Number.isNaN(id) && id > 0);
       }
 
       try {
@@ -208,7 +209,9 @@ declare const kintone: any;
           border-radius: 4px; z-index: 2147483648; font-size: 0.95em;
         `;
         document.body.appendChild(successMsg);
-        setTimeout(() => successMsg.remove(), 2000);
+        setTimeout(() => {
+          successMsg.remove();
+        }, 2000);
 
         dialog.remove();
       } catch (error) {
@@ -226,12 +229,12 @@ declare const kintone: any;
 
   // アプリ表示時に設定に応じて表示/非表示を切り替える
   async function autoToggleAppDescription(): Promise<void> {
-    if (typeof kintone === 'undefined' || !kintone.app) {
+    if (!kintone?.app) {
       return;
     }
 
     const appId = kintone.app.getId();
-    if (appId === null || appId === undefined) {
+    if (appId == null) {
       return;
     }
 
@@ -243,12 +246,12 @@ declare const kintone: any;
     }
   }
 
-  (window as any).showToggleAppDescriptionSettings = showSettingsDialog;
+  window.showToggleAppDescriptionSettings = showSettingsDialog;
 
-  if (!(window as any).__toggleAppDescriptionInitialized__) {
-    (window as any).__toggleAppDescriptionInitialized__ = true;
+  if (!window.__toggleAppDescriptionInitialized__) {
+    window.__toggleAppDescriptionInitialized__ = true;
 
-    if (typeof kintone !== 'undefined' && kintone.events) {
+    if (kintone?.events) {
       kintone.events.on(
         [
           'app.record.index.show',
@@ -260,7 +263,6 @@ declare const kintone: any;
           await autoToggleAppDescription();
         },
       );
-      console.log('[Kintone Dev Tools] Event listeners registered for toggleAppDescription.');
     }
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
@@ -269,7 +271,6 @@ declare const kintone: any;
       document.addEventListener('DOMContentLoaded', () => autoToggleAppDescription());
     }
 
-    console.log('[Kintone Dev Tools] toggleAppDescription initialized (auto-toggle enabled).');
     return;
   }
 
