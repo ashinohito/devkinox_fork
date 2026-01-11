@@ -1,5 +1,3 @@
-// コンテンツスクリプト: アプリ説明欄の表示/非表示
-
 import type { Kintone } from './types';
 
 declare const kintone: Kintone;
@@ -8,21 +6,53 @@ declare const kintone: Kintone;
   const DIALOG_ID = 'kintone-dev-tools-toggle-app-description-dialog';
   const STORAGE_KEY = 'kintone-dev-tools-hidden-app-ids';
 
-  // ストレージから設定を取得する
+  const STYLES = {
+    DIALOG_Z_INDEX: 2147483647,
+    MESSAGE_Z_INDEX: 2147483648,
+    COLORS: {
+      PRIMARY: '#3498db',
+      SUCCESS: '#27ae60',
+      INFO_BG: '#f0f8ff',
+      INFO_BORDER: '#b0d4f1',
+      TEXT_SECONDARY: '#666',
+      BORDER: '#ccc',
+      BUTTON_CANCEL: '#ccc',
+      BUTTON_CANCEL_TEXT: '#333',
+    },
+    TIMING: {
+      SUCCESS_MESSAGE_DURATION: 2000,
+    },
+  } as const;
+
+  const MESSAGES = {
+    DIALOG_TITLE: 'アプリ説明欄の表示/非表示',
+    CURRENT_APP_ID: '現在のアプリID: ',
+    DESCRIPTION: 'アプリ説明欄を自動的に閉じたいアプリのIDをカンマ区切りで入力してください。',
+    INPUT_LABEL: 'アプリID (カンマ区切り)',
+    INPUT_PLACEHOLDER: '例: 1, 54, 67',
+    BUTTON_CLOSE: '閉じる',
+    BUTTON_SAVE: '保存',
+    SUCCESS_SAVED: '✓ 設定を保存しました',
+    ERROR_SAVE_FAILED: '設定の保存に失敗しました。',
+  } as const;
+
+  const EVENT_TYPES = [
+    'app.record.index.show',
+    'app.record.detail.show',
+    'app.record.create.show',
+    'app.record.edit.show',
+  ] as const;
+
   async function getHiddenAppIds(): Promise<number[]> {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-      return [];
+      return stored ? JSON.parse(stored) : [];
     } catch (error) {
       console.error('[Kintone Dev Tools] Failed to get hidden app IDs:', error);
       return [];
     }
   }
 
-  // ストレージに設定を保存する
   async function saveHiddenAppIds(appIds: number[]): Promise<void> {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(appIds));
@@ -32,218 +62,238 @@ declare const kintone: Kintone;
     }
   }
 
-  // アプリ説明欄を非表示にする
-  async function hideAppDescription(): Promise<void> {
+  async function setAppDescriptionState(targetState: 'OPEN' | 'CLOSED'): Promise<void> {
     if (!kintone?.app) {
       console.warn('[Kintone Dev Tools] kintone.app is not available.');
       return;
     }
 
     try {
-      const state = await kintone.app.getDescriptionDisplayState();
+      const currentState = await kintone.app.getDescriptionDisplayState();
+      const expectedState = targetState === 'CLOSED' ? 'HIDDEN' : 'OPEN';
 
-      if (state !== 'HIDDEN') {
-        await kintone.app.showDescription('CLOSED');
+      if (currentState !== expectedState) {
+        await kintone.app.showDescription(targetState);
       }
     } catch (error) {
-      console.error('[Kintone Dev Tools] Error hiding app description:', error);
+      console.error(`[Kintone Dev Tools] Error setting app description to ${targetState}:`, error);
     }
   }
 
-  // アプリ説明欄を表示する
-  async function showAppDescription(): Promise<void> {
-    if (!kintone?.app) {
-      console.warn('[Kintone Dev Tools] kintone.app is not available.');
-      return;
-    }
+  const hideAppDescription = () => setAppDescriptionState('CLOSED');
+  const showAppDescription = () => setAppDescriptionState('OPEN');
 
-    try {
-      const state = await kintone.app.getDescriptionDisplayState();
-
-      if (state !== 'OPEN') {
-        await kintone.app.showDescription('OPEN');
-      }
-    } catch (error) {
-      console.error('[Kintone Dev Tools] Error opening app description:', error);
-    }
+  function createStyledElement<K extends keyof HTMLElementTagNameMap>(
+    tag: K,
+    styles: Partial<CSSStyleDeclaration>,
+    textContent?: string,
+  ): HTMLElementTagNameMap[K] {
+    const element = document.createElement(tag);
+    Object.assign(element.style, styles);
+    if (textContent) element.textContent = textContent;
+    return element;
   }
 
-  // 設定ダイアログを表示
+  function createButton(
+    text: string,
+    backgroundColor: string,
+    textColor: string,
+    onClick: () => void,
+  ): HTMLButtonElement {
+    const button = createStyledElement(
+      'button',
+      {
+        padding: '8px 15px',
+        background: backgroundColor,
+        color: textColor,
+        border: 'none',
+        borderRadius: '4px',
+        cursor: 'pointer',
+        fontSize: '0.95em',
+      },
+      text,
+    );
+    button.onclick = onClick;
+    return button;
+  }
+
+  function showSuccessMessage(message: string): void {
+    const successMsg = createStyledElement(
+      'div',
+      {
+        position: 'fixed',
+        top: '20px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        background: STYLES.COLORS.SUCCESS,
+        color: 'white',
+        padding: '12px 24px',
+        borderRadius: '4px',
+        zIndex: STYLES.MESSAGE_Z_INDEX.toString(),
+        fontSize: '0.95em',
+      },
+      message,
+    );
+    document.body.appendChild(successMsg);
+    setTimeout(() => successMsg.remove(), STYLES.TIMING.SUCCESS_MESSAGE_DURATION);
+  }
+
+  function parseAppIds(input: string): number[] {
+    return input
+      .split(',')
+      .map((id) => parseInt(id.trim(), 10))
+      .filter((id) => !Number.isNaN(id) && id > 0);
+  }
+
   async function showSettingsDialog(): Promise<void> {
-    const existingDialog = document.getElementById(DIALOG_ID);
-    if (existingDialog) existingDialog.remove();
+    document.getElementById(DIALOG_ID)?.remove();
 
-    const dialog = document.createElement('div');
+    const dialog = createStyledElement('div', {
+      position: 'fixed',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      background: 'white',
+      padding: '20px',
+      borderRadius: '8px',
+      boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+      zIndex: STYLES.DIALOG_Z_INDEX.toString(),
+      width: '450px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '15px',
+      color: '#333',
+      fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+    });
     dialog.id = DIALOG_ID;
-    dialog.style.cssText = `
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      z-index: 2147483647; width: 450px; display: flex; flex-direction: column; gap: 15px;
-      color: #333; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    `;
 
-    const title = document.createElement('h3');
-    title.textContent = 'アプリ説明欄の表示/非表示';
-    title.style.textAlign = 'center';
-    title.style.margin = '0 0 10px 0';
+    const title = createStyledElement(
+      'h3',
+      {
+        textAlign: 'center',
+        margin: '0 0 10px 0',
+      },
+      MESSAGES.DIALOG_TITLE,
+    );
     dialog.appendChild(title);
 
-    // 現在のアプリID表示
-    let currentAppId = '';
-    try {
-      const appId = kintone.app.getId();
-      if (appId) {
-        currentAppId = appId.toString();
-      }
-    } catch (_e) {
-      // アプリID取得失敗時は空文字列のまま
-    }
-
+    const currentAppId = kintone.app.getId()?.toString() ?? '';
     if (currentAppId) {
-      const currentAppLabel = document.createElement('p');
-      currentAppLabel.textContent = `現在のアプリID: ${currentAppId}`;
-      currentAppLabel.style.fontSize = '0.9em';
-      currentAppLabel.style.margin = '0 0 10px 0';
-      currentAppLabel.style.padding = '8px';
-      currentAppLabel.style.background = '#f0f8ff';
-      currentAppLabel.style.border = '1px solid #b0d4f1';
-      currentAppLabel.style.borderRadius = '4px';
-      currentAppLabel.style.fontWeight = 'bold';
-      dialog.appendChild(currentAppLabel);
+      const appLabel = createStyledElement(
+        'p',
+        {
+          fontSize: '0.9em',
+          margin: '0 0 10px 0',
+          padding: '8px',
+          background: STYLES.COLORS.INFO_BG,
+          border: `1px solid ${STYLES.COLORS.INFO_BORDER}`,
+          borderRadius: '4px',
+          fontWeight: 'bold',
+        },
+        `${MESSAGES.CURRENT_APP_ID}${currentAppId}`,
+      );
+      dialog.appendChild(appLabel);
     }
 
-    // 説明
-    const description = document.createElement('p');
-    description.textContent =
-      'アプリ説明欄を自動的に閉じたいアプリのIDをカンマ区切りで入力してください。';
-    description.style.fontSize = '0.9em';
-    description.style.margin = '0 0 10px 0';
-    description.style.color = '#666';
+    const description = createStyledElement(
+      'p',
+      {
+        fontSize: '0.9em',
+        margin: '0 0 10px 0',
+        color: STYLES.COLORS.TEXT_SECONDARY,
+      },
+      MESSAGES.DESCRIPTION,
+    );
     dialog.appendChild(description);
 
-    // アプリID入力
-    const inputLabel = document.createElement('label');
-    inputLabel.textContent = 'アプリID (カンマ区切り)';
-    inputLabel.style.display = 'block';
-    inputLabel.style.marginBottom = '5px';
-    inputLabel.style.fontWeight = 'bold';
+    const inputLabel = createStyledElement(
+      'label',
+      {
+        display: 'block',
+        marginBottom: '5px',
+        fontWeight: 'bold',
+      },
+      MESSAGES.INPUT_LABEL,
+    );
+    dialog.appendChild(inputLabel);
 
-    const inputField = document.createElement('input');
+    const inputField = createStyledElement('input', {
+      width: 'calc(100% - 12px)',
+      padding: '8px',
+      border: `1px solid ${STYLES.COLORS.BORDER}`,
+      borderRadius: '4px',
+      fontSize: '0.95em',
+    }) as HTMLInputElement;
     inputField.type = 'text';
-    inputField.style.width = 'calc(100% - 12px)';
-    inputField.style.padding = '8px';
-    inputField.style.border = '1px solid #ccc';
-    inputField.style.borderRadius = '4px';
-    inputField.style.fontSize = '0.95em';
-    inputField.placeholder = '例: 1, 54, 67';
+    inputField.placeholder = MESSAGES.INPUT_PLACEHOLDER;
 
-    // 現在の設定を読み込む
     const previousHiddenAppIds = await getHiddenAppIds();
     if (previousHiddenAppIds.length > 0) {
       inputField.value = previousHiddenAppIds.join(', ');
     }
-
-    dialog.appendChild(inputLabel);
     dialog.appendChild(inputField);
 
-    // ボタンコンテナ
-    const buttonContainer = document.createElement('div');
-    buttonContainer.style.display = 'flex';
-    buttonContainer.style.justifyContent = 'flex-end';
-    buttonContainer.style.gap = '10px';
-    buttonContainer.style.marginTop = '10px';
+    const buttonContainer = createStyledElement('div', {
+      display: 'flex',
+      justifyContent: 'flex-end',
+      gap: '10px',
+      marginTop: '10px',
+    });
 
-    // 閉じるボタン
-    const closeButton = document.createElement('button');
-    closeButton.textContent = '閉じる';
-    closeButton.style.padding = '8px 15px';
-    closeButton.style.background = '#ccc';
-    closeButton.style.color = '#333';
-    closeButton.style.border = 'none';
-    closeButton.style.borderRadius = '4px';
-    closeButton.style.cursor = 'pointer';
-    closeButton.style.fontSize = '0.95em';
-    closeButton.onclick = () => dialog.remove();
-
-    // 保存ボタン
-    const saveButton = document.createElement('button');
-    saveButton.textContent = '保存';
-    saveButton.style.padding = '8px 15px';
-    saveButton.style.background = '#3498db';
-    saveButton.style.color = 'white';
-    saveButton.style.border = 'none';
-    saveButton.style.borderRadius = '4px';
-    saveButton.style.cursor = 'pointer';
-    saveButton.style.fontSize = '0.95em';
-    saveButton.onclick = async () => {
-      const inputValue = inputField.value.trim();
-      let newHiddenAppIds: number[] = [];
-
-      if (inputValue) {
-        newHiddenAppIds = inputValue
-          .split(',')
-          .map((id) => parseInt(id.trim(), 10))
-          .filter((id) => !Number.isNaN(id) && id > 0);
-      }
-
-      try {
-        await saveHiddenAppIds(newHiddenAppIds);
-
-        if (currentAppId) {
-          const currentAppIdNum = parseInt(currentAppId, 10);
-          const wasHidden = previousHiddenAppIds.includes(currentAppIdNum);
-          const isNowHidden = newHiddenAppIds.includes(currentAppIdNum);
-
-          if (wasHidden && !isNowHidden) {
-            await showAppDescription();
-          } else if (!wasHidden && isNowHidden) {
-            await hideAppDescription();
-          }
-        }
-
-        const successMsg = document.createElement('div');
-        successMsg.textContent = '✓ 設定を保存しました';
-        successMsg.style.cssText = `
-          position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-          background: #27ae60; color: white; padding: 12px 24px;
-          border-radius: 4px; z-index: 2147483648; font-size: 0.95em;
-        `;
-        document.body.appendChild(successMsg);
-        setTimeout(() => {
-          successMsg.remove();
-        }, 2000);
-
-        dialog.remove();
-      } catch (error) {
-        console.error('[Kintone Dev Tools] Failed to save settings:', error);
-        alert('設定の保存に失敗しました。');
-      }
-    };
+    const closeButton = createButton(
+      MESSAGES.BUTTON_CLOSE,
+      STYLES.COLORS.BUTTON_CANCEL,
+      STYLES.COLORS.BUTTON_CANCEL_TEXT,
+      () => dialog.remove(),
+    );
+    const saveButton = createButton(MESSAGES.BUTTON_SAVE, STYLES.COLORS.PRIMARY, 'white', () =>
+      handleSave(inputField, currentAppId, previousHiddenAppIds, dialog),
+    );
 
     buttonContainer.appendChild(closeButton);
     buttonContainer.appendChild(saveButton);
     dialog.appendChild(buttonContainer);
-
     document.body.appendChild(dialog);
   }
 
-  // アプリ表示時に設定に応じて表示/非表示を切り替える
-  async function autoToggleAppDescription(): Promise<void> {
-    if (!kintone?.app) {
-      return;
-    }
+  async function handleSave(
+    inputField: HTMLInputElement,
+    currentAppId: string,
+    previousHiddenAppIds: number[],
+    dialog: HTMLElement,
+  ): Promise<void> {
+    const inputValue = inputField.value.trim();
+    const newHiddenAppIds = inputValue ? parseAppIds(inputValue) : [];
 
-    const appId = kintone.app.getId();
-    if (appId == null) {
-      return;
+    try {
+      await saveHiddenAppIds(newHiddenAppIds);
+
+      if (currentAppId) {
+        const currentAppIdNum = parseInt(currentAppId, 10);
+        const wasHidden = previousHiddenAppIds.includes(currentAppIdNum);
+        const isNowHidden = newHiddenAppIds.includes(currentAppIdNum);
+
+        if (wasHidden && !isNowHidden) {
+          await showAppDescription();
+        } else if (!wasHidden && isNowHidden) {
+          await hideAppDescription();
+        }
+      }
+
+      showSuccessMessage(MESSAGES.SUCCESS_SAVED);
+      dialog.remove();
+    } catch (error) {
+      console.error('[Kintone Dev Tools] Failed to save settings:', error);
+      alert(MESSAGES.ERROR_SAVE_FAILED);
     }
+  }
+
+  async function autoToggleAppDescription(): Promise<void> {
+    const appId = kintone?.app?.getId();
+    if (appId == null) return;
 
     const hiddenAppIds = await getHiddenAppIds();
-    if (hiddenAppIds.includes(appId)) {
-      await hideAppDescription();
-    } else {
-      await showAppDescription();
-    }
+    await (hiddenAppIds.includes(appId) ? hideAppDescription() : showAppDescription());
   }
 
   window.showToggleAppDescriptionSettings = showSettingsDialog;
@@ -251,24 +301,12 @@ declare const kintone: Kintone;
   if (!window.__toggleAppDescriptionInitialized__) {
     window.__toggleAppDescriptionInitialized__ = true;
 
-    if (kintone?.events) {
-      kintone.events.on(
-        [
-          'app.record.index.show',
-          'app.record.detail.show',
-          'app.record.create.show',
-          'app.record.edit.show',
-        ],
-        async () => {
-          await autoToggleAppDescription();
-        },
-      );
-    }
+    kintone?.events?.on([...EVENT_TYPES], autoToggleAppDescription);
 
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    if (document.readyState !== 'loading') {
       autoToggleAppDescription();
     } else {
-      document.addEventListener('DOMContentLoaded', () => autoToggleAppDescription());
+      document.addEventListener('DOMContentLoaded', autoToggleAppDescription);
     }
 
     return;
