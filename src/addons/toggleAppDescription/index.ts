@@ -288,12 +288,14 @@ declare const kintone: Kintone;
     }
   }
 
-  async function autoToggleAppDescription(): Promise<void> {
+  async function autoToggleAppDescription(event?: any): Promise<any> {
     const appId = kintone?.app?.getId();
-    if (appId == null) return;
+    if (appId == null) return event;
 
     const hiddenAppIds = await getHiddenAppIds();
     await (hiddenAppIds.includes(appId) ? hideAppDescription() : showAppDescription());
+
+    return event;
   }
 
   window.showToggleAppDescriptionSettings = showSettingsDialog;
