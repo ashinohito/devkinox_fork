@@ -22,7 +22,7 @@ interface DeployAppSettingsRequest {
 }
 
 type DeployStatus = "PROCESSING" | "SUCCESS" | "FAIL" | "CANCEL";
-type KintoneNotificationType = "ERROR" | "SUCCESS" | "INFO";
+type KintoneNotificationType = "ERROR" | "SUCCESS";
 
 interface GetDeployStatusResponse {
   apps: Array<{
@@ -74,6 +74,11 @@ interface KintoneErrorLike {
 }
 
 (() => {
+  // 全体の流れ:
+  // 1) ダイアログを表示して既存メモを取得
+  // 2) ユーザーが内容を編集して保存
+  // 3) 保存後に運用環境への反映(デプロイ)を実行
+  // 4) 反映完了をポーリングで確認して結果を通知
   const DIALOG_ID = "kintone-dev-tools-edit-app-admin-note-dialog";
   const OVERLAY_ID = "kintone-dev-tools-edit-app-admin-note-overlay";
   const MAX_CONTENT_LENGTH = 10000;
@@ -111,6 +116,8 @@ interface KintoneErrorLike {
       "アプリ管理者用メモを取得する権限がありません。\nアプリ管理権限を確認してください。",
     ERROR_SAVE_PERMISSION:
       "アプリ管理者用メモを保存する権限がありません。\nアプリ管理権限を確認してください。",
+    ERROR_DEPLOY_PERMISSION:
+      "運用環境へ反映する権限がありません。\nアプリ管理権限を確認してください。",
     ERROR_SAVE_REVISION:
       "アプリ管理者用メモの保存に失敗しました。\n他の変更と競合した可能性があります。再度開き直して保存してください。",
     ERROR_DEPLOY:
@@ -131,12 +138,24 @@ interface KintoneErrorLike {
   const DEPLOY_STATUS_MAX_ATTEMPTS = 20;
   const SPINNER_STYLE_ID =
     "kintone-dev-tools-edit-app-admin-note-spinner-style";
+  const ADMIN_NOTES_API_PATH = "/k/v1/preview/app/adminNotes.json";
+  const DEPLOY_API_PATH = "/k/v1/preview/app/deploy.json";
+  const NOOP = (): void => {};
 
   function getKintone(): KintoneGlobal | null {
     return (globalThis as { kintone?: KintoneGlobal }).kintone ?? null;
   }
 
+  function getRequiredKintone(): KintoneGlobal {
+    const kintoneApi = getKintone();
+    if (!kintoneApi) {
+      throw new Error("kintone object is not available.");
+    }
+    return kintoneApi;
+  }
+
   function normalizeError(error: unknown): KintoneErrorLike {
+    // kintoneのエラー形式が複数あるため、ここで同じ形に寄せて以降の判定を簡単にする。
     if (!error || typeof error !== "object") {
       return {};
     }
@@ -151,6 +170,7 @@ interface KintoneErrorLike {
   }
 
   function isPermissionError(error: unknown): boolean {
+    // エラーコードだけでなく、メッセージ文面も併用して取りこぼしを減らす。
     const normalized = normalizeError(error);
     const code = normalized.code ?? "";
     const message = normalized.message ?? String(error ?? "");
@@ -162,6 +182,7 @@ interface KintoneErrorLike {
   }
 
   function isRevisionError(error: unknown): boolean {
+    // 保存時の競合(他ユーザーの更新とぶつかったケース)を判定する。
     const normalized = normalizeError(error);
     const code = normalized.code ?? "";
     const message = normalized.message ?? String(error ?? "");
@@ -173,6 +194,7 @@ interface KintoneErrorLike {
   }
 
   function isNetworkError(error: unknown): boolean {
+    // 通信失敗をまとめて検知し、ユーザーには接続確認のメッセージを返す。
     const message =
       normalizeError(error).message ??
       (error instanceof Error ? error.message : String(error ?? ""));
@@ -182,71 +204,62 @@ interface KintoneErrorLike {
     );
   }
 
-  function getErrorDetails(error: unknown): string {
+  function getErrorContextForLog(error: unknown): {
+    code?: string;
+    id?: string;
+  } {
     const normalized = normalizeError(error);
-    const details: string[] = [];
+    return {
+      code: normalized.code,
+      id: normalized.id,
+    };
+  }
 
-    if (normalized.code) {
-      details.push(`code: ${normalized.code}`);
-    }
-    if (normalized.id) {
-      details.push(`id: ${normalized.id}`);
-    }
+  function logSecurityAwareError(context: string, error: unknown): void {
+    console.error(
+      `[Kintone Dev Tools] ${context}`,
+      getErrorContextForLog(error),
+    );
+  }
 
-    return details.join(" / ");
+  function logSecurityAwareWarning(context: string, error: unknown): void {
+    console.warn(
+      `[Kintone Dev Tools] ${context}`,
+      getErrorContextForLog(error),
+    );
   }
 
   function getLoadErrorMessage(error: unknown): string {
-    const details = getErrorDetails(error);
-
     if (isPermissionError(error)) {
-      return details
-        ? `${MESSAGES.ERROR_LOAD_PERMISSION}\n(${details})`
-        : MESSAGES.ERROR_LOAD_PERMISSION;
+      return MESSAGES.ERROR_LOAD_PERMISSION;
     }
     if (isNetworkError(error)) {
       return MESSAGES.ERROR_NETWORK;
     }
-    return details
-      ? `${MESSAGES.ERROR_LOAD}\n(${details})`
-      : MESSAGES.ERROR_LOAD;
+    return MESSAGES.ERROR_LOAD;
   }
 
   function getSaveErrorMessage(error: unknown): string {
-    const details = getErrorDetails(error);
-
     if (isRevisionError(error)) {
-      return details
-        ? `${MESSAGES.ERROR_SAVE_REVISION}\n(${details})`
-        : MESSAGES.ERROR_SAVE_REVISION;
+      return MESSAGES.ERROR_SAVE_REVISION;
     }
     if (isPermissionError(error)) {
-      return details
-        ? `${MESSAGES.ERROR_SAVE_PERMISSION}\n(${details})`
-        : MESSAGES.ERROR_SAVE_PERMISSION;
+      return MESSAGES.ERROR_SAVE_PERMISSION;
     }
     if (isNetworkError(error)) {
       return MESSAGES.ERROR_NETWORK;
     }
-    return details
-      ? `${MESSAGES.ERROR_SAVE}\n(${details})`
-      : MESSAGES.ERROR_SAVE;
+    return MESSAGES.ERROR_SAVE;
   }
 
   function getDeployErrorMessage(error: unknown): string {
-    const details = getErrorDetails(error);
-
     if (isPermissionError(error)) {
-      return details
-        ? `${MESSAGES.ERROR_SAVE_PERMISSION}\n(${details})`
-        : MESSAGES.ERROR_SAVE_PERMISSION;
+      return MESSAGES.ERROR_DEPLOY_PERMISSION;
     }
     if (isNetworkError(error)) {
       return MESSAGES.ERROR_NETWORK;
     }
-    return details
-      ? `${MESSAGES.ERROR_DEPLOY}\n(${details})`
-      : MESSAGES.ERROR_DEPLOY;
+    return MESSAGES.ERROR_DEPLOY;
   }
 
   function createStyledElement<K extends keyof HTMLElementTagNameMap>(
@@ -315,10 +328,11 @@ interface KintoneErrorLike {
     type: "ERROR" | "SUCCESS",
     message: string,
   ): Promise<void> {
+    const floatingMessageType = type === "SUCCESS" ? "success" : "error";
     const isDialogOpen = Boolean(document.getElementById(DIALOG_ID));
 
     if (isDialogOpen) {
-      showFloatingMessage(message, type === "SUCCESS" ? "success" : "error");
+      showFloatingMessage(message, floatingMessageType);
       return;
     }
 
@@ -328,14 +342,14 @@ interface KintoneErrorLike {
         await kintoneApi.showNotification(type, message);
         return;
       } catch (error) {
-        console.warn(
-          "[Kintone Dev Tools] showNotification failed. Fallback to floating message:",
+        logSecurityAwareWarning(
+          "showNotification failed. Fallback to floating message:",
           error,
         );
       }
     }
 
-    showFloatingMessage(message, type === "SUCCESS" ? "success" : "error");
+    showFloatingMessage(message, floatingMessageType);
   }
 
   function ensureSpinnerStyle(): void {
@@ -360,22 +374,16 @@ interface KintoneErrorLike {
   }
 
   async function fetchAdminNotes(appId: number): Promise<AdminNotesResponse> {
-    const kintoneApi = getKintone();
-    if (!kintoneApi) {
-      throw new Error("kintone object is not available.");
-    }
-    const path = kintoneApi.api.url("/k/v1/preview/app/adminNotes.json", true);
+    const kintoneApi = getRequiredKintone();
+    const path = kintoneApi.api.url(ADMIN_NOTES_API_PATH, true);
     return kintoneApi.api(path, "GET", { app: appId });
   }
 
   async function updateAdminNotes(
     params: UpdateAdminNotesRequest,
   ): Promise<{ revision: string }> {
-    const kintoneApi = getKintone();
-    if (!kintoneApi) {
-      throw new Error("kintone object is not available.");
-    }
-    const path = kintoneApi.api.url("/k/v1/preview/app/adminNotes.json", true);
+    const kintoneApi = getRequiredKintone();
+    const path = kintoneApi.api.url(ADMIN_NOTES_API_PATH, true);
     return kintoneApi.api(path, "PUT", params);
   }
 
@@ -383,11 +391,8 @@ interface KintoneErrorLike {
     appId: number,
     revision: string,
   ): Promise<void> {
-    const kintoneApi = getKintone();
-    if (!kintoneApi) {
-      throw new Error("kintone object is not available.");
-    }
-    const path = kintoneApi.api.url("/k/v1/preview/app/deploy.json", true);
+    const kintoneApi = getRequiredKintone();
+    const path = kintoneApi.api.url(DEPLOY_API_PATH, true);
     return kintoneApi.api(path, "POST", {
       apps: [{ app: appId, revision }],
       revert: false,
@@ -395,11 +400,8 @@ interface KintoneErrorLike {
   }
 
   async function getDeployStatus(appId: number): Promise<DeployStatus | null> {
-    const kintoneApi = getKintone();
-    if (!kintoneApi) {
-      throw new Error("kintone object is not available.");
-    }
-    const path = kintoneApi.api.url("/k/v1/preview/app/deploy.json", true);
+    const kintoneApi = getRequiredKintone();
+    const path = kintoneApi.api.url(DEPLOY_API_PATH, true);
     const response = await kintoneApi.api(path, "GET", { apps: [appId] });
     const target = response.apps.find((item) => Number(item.app) === appId);
     return target?.status ?? null;
@@ -410,14 +412,17 @@ interface KintoneErrorLike {
   }
 
   async function waitForDeployCompletion(appId: number): Promise<void> {
+    // デプロイは非同期で完了まで時間がかかるため、一定間隔で状態を確認する。
     for (let attempt = 0; attempt < DEPLOY_STATUS_MAX_ATTEMPTS; attempt += 1) {
       const status = await getDeployStatus(appId);
 
       if (status === "SUCCESS") {
+        // 反映完了。
         return;
       }
 
       if (status === "FAIL" || status === "CANCEL") {
+        // 失敗/キャンセルは即終了し、呼び出し元でメッセージを出す。
         throw new Error(`DEPLOY_${status}`);
       }
 
@@ -428,11 +433,13 @@ interface KintoneErrorLike {
   }
 
   async function showDialog(): Promise<void> {
+    // 同じダイアログが重複して表示されないよう、先に既存要素を消す。
     removeExistingDialog();
 
     const kintoneApi = getKintone();
     if (!kintoneApi) {
-      alert(
+      await showTopMessage(
+        "ERROR",
         "kintoneオブジェクトを取得できませんでした。ページを再読み込みして再度お試しください。",
       );
       return;
@@ -440,7 +447,7 @@ interface KintoneErrorLike {
 
     const appId = kintoneApi.app.getId();
     if (appId == null) {
-      alert(MESSAGES.ERROR_APP_ID);
+      await showTopMessage("ERROR", MESSAGES.ERROR_APP_ID);
       return;
     }
 
@@ -517,12 +524,10 @@ interface KintoneErrorLike {
 
     let adminNotes: AdminNotesResponse;
     try {
+      // 初期表示時に現在のメモを取得し、フォームに反映する。
       adminNotes = await fetchAdminNotes(appId);
     } catch (error) {
-      console.error(
-        "[Kintone Dev Tools] Failed to fetch app admin notes:",
-        error,
-      );
+      logSecurityAwareError("Failed to fetch app admin notes:", error);
       removeExistingDialog();
       await showTopMessage("ERROR", getLoadErrorMessage(error));
       return;
@@ -562,6 +567,7 @@ interface KintoneErrorLike {
     dialog.appendChild(helper);
 
     const updateLengthText = (): void => {
+      // 入力中に文字数を表示し、上限超過時は色で注意を促す。
       helper.textContent = `${textarea.value.length}/${MAX_CONTENT_LENGTH}`;
       helper.style.color =
         textarea.value.length > MAX_CONTENT_LENGTH
@@ -635,26 +641,30 @@ interface KintoneErrorLike {
     });
 
     const closeButton = createButton(
-      "閉じる",
+      MESSAGES.BUTTON_CLOSE,
       "#ccc",
       "#333",
       removeExistingDialog,
     );
 
+    function setButtonProcessingState(
+      button: HTMLButtonElement,
+      isProcessing: boolean,
+    ): void {
+      button.disabled = isProcessing;
+      button.style.opacity = isProcessing ? "0.7" : "1";
+      button.style.cursor = isProcessing ? "not-allowed" : "pointer";
+    }
+
     function setProcessingState(isProcessing: boolean, message?: string): void {
+      // 保存中は二重送信と誤操作を防ぐため、編集UIと閉じる操作を無効化する。
       textarea.disabled = isProcessing;
       includeCheckbox.disabled = isProcessing;
 
-      saveButton.disabled = isProcessing;
-      closeButton.disabled = isProcessing;
+      setButtonProcessingState(saveButton, isProcessing);
+      setButtonProcessingState(closeButton, isProcessing);
 
-      saveButton.style.opacity = isProcessing ? "0.7" : "1";
-      closeButton.style.opacity = isProcessing ? "0.7" : "1";
-
-      saveButton.style.cursor = isProcessing ? "not-allowed" : "pointer";
-      closeButton.style.cursor = isProcessing ? "not-allowed" : "pointer";
-
-      overlay.onclick = isProcessing ? () => {} : removeExistingDialog;
+      overlay.onclick = isProcessing ? NOOP : removeExistingDialog;
 
       processingContainer.style.display = isProcessing ? "flex" : "none";
       if (isProcessing && message) {
@@ -667,6 +677,7 @@ interface KintoneErrorLike {
       STYLES.COLORS.PRIMARY,
       "white",
       async () => {
+        // クライアント側で先に入力上限チェック。
         if (textarea.value.length > MAX_CONTENT_LENGTH) {
           alert(MESSAGES.VALIDATION_LENGTH);
           return;
@@ -675,6 +686,7 @@ interface KintoneErrorLike {
         setProcessingState(true, MESSAGES.INFO_SAVING_DEPLOYING);
 
         try {
+          // 1. 下書き(プレビュー)設定を更新。
           const result = await updateAdminNotes({
             app: appId,
             content: textarea.value,
@@ -683,14 +695,13 @@ interface KintoneErrorLike {
           });
 
           try {
+            // 2. 更新したリビジョンを運用環境へ反映。
             await deployAppSettings(appId, result.revision);
             setProcessingState(true, MESSAGES.INFO_DEPLOYING);
+            // 3. 反映完了まで待機(ポーリング)。
             await waitForDeployCompletion(appId);
           } catch (error) {
-            console.error(
-              "[Kintone Dev Tools] Failed to deploy app settings:",
-              error,
-            );
+            logSecurityAwareError("Failed to deploy app settings:", error);
             const errorMessage =
               error instanceof Error && error.message === "DEPLOY_TIMEOUT"
                 ? MESSAGES.ERROR_DEPLOY_TIMEOUT
@@ -702,14 +713,12 @@ interface KintoneErrorLike {
             return;
           }
 
+          // 最新リビジョンを保持して、次回保存時の競合判定に使う。
           adminNotes.revision = result.revision;
           revisionLabel.textContent = `${MESSAGES.REVISION_PREFIX}${result.revision}`;
           await showTopMessage("SUCCESS", MESSAGES.SUCCESS_SAVE);
         } catch (error) {
-          console.error(
-            "[Kintone Dev Tools] Failed to update app admin notes:",
-            error,
-          );
+          logSecurityAwareError("Failed to update app admin notes:", error);
           await showTopMessage("ERROR", getSaveErrorMessage(error));
         } finally {
           setProcessingState(false);
@@ -722,5 +731,6 @@ interface KintoneErrorLike {
     dialog.appendChild(buttonContainer);
   }
 
+  // このスクリプト読み込み時にダイアログを開く。
   showDialog();
 })();
