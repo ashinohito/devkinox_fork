@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Devkinox",
-  "version": "1.0.0.0",
+  "version": "1.3.1.0",
   "description": "kintone開発者向けツール集",
   "permissions": ["activeTab", "scripting"],
   "host_permissions": ["*://*.cybozu.com/*"],
@@ -13,6 +13,14 @@
       "128": "icons/icon128.png"
     }
   },
+  "content_scripts": [
+    {
+      "matches": ["*://*.cybozu.com/*"],
+      "js": ["addons/toggleAppDescription.js"],
+      "run_at": "document_end",
+      "world": "MAIN"
+    }
+  ],
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
