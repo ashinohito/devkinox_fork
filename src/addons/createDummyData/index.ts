@@ -1,7 +1,5 @@
-import type { PageType, AppInfo, FieldProperty } from "./types";
+import type { AppInfo, FieldProperty, PageType } from "./types";
 
-//MEMO:だいたいのコードはたむらさんのパクリ。
-//TODO:余裕があればフロント、ビジネスロジ、APIロジごとにファイルを切り分けたい。
 (() => {
   console.log(
     "[Kintone Dev Tools] createDummyData.js (content script) loaded.",
@@ -241,6 +239,7 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
     });
   }
 
+  // TODO:ルックアップは入れないことにする。
   function insertLabelDammyData() {
     if (typeof kintone === "undefined" || !kintone || !kintone.app) {
       console.warn(
@@ -296,13 +295,6 @@ import type { PageType, AppInfo, FieldProperty } from "./types";
             if (isSmartDammyData) {
               console.log("showDialogInputApiKey");
               showAlert("「正確なダミーデータ作成」機能は開発中です。");
-              // showDialogInputApiKey(appInfo.appId).then(({ status, kintoneApi, awsApi }) => {
-              //   if (status) {
-              //     console.log("入力値:", kintoneApi, awsApi);
-              //   } else {
-              //     console.log("キャンセルされました");
-              //   }
-              // });
             } else {
               const result = confirm("ラベルダミーデータを作成しますか？");
               if (!result) return;
