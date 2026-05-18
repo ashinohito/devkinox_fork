@@ -132,7 +132,7 @@ declare const kintone: Kintone;
     "app.record.detail.show",
     "app.record.create.show",
     "app.record.edit.show",
-    "app.record.graph.show",
+    "app.report.show",
   ] as const;
 
   // 以下、ヘルパー関数
