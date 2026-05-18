@@ -1,7 +1,5 @@
 import type { Kintone } from "./types";
 
-declare const kintone: Kintone;
-
 (() => {
   // 以下、定数
   const DIALOG_ID = "kintone-dev-tools-toggle-app-description-dialog";
@@ -25,6 +23,9 @@ declare const kintone: Kintone;
       SUCCESS_MESSAGE_DURATION: 2000,
     },
   } as const;
+
+  const INIT_RETRY_INTERVAL_MS = 50;
+  const INIT_RETRY_MAX_ATTEMPTS = 200;
 
   const UI_STYLES = {
     DIALOG: {
@@ -135,6 +136,19 @@ declare const kintone: Kintone;
     "app.report.show",
   ] as const;
 
+  function getKintone(): Kintone | undefined {
+    return (globalThis as { kintone?: Kintone }).kintone;
+  }
+
+  function getKintoneApp(): Kintone["app"] | undefined {
+    const app = getKintone()?.app;
+    if (!app) {
+      console.warn("[Kintone Dev Tools] kintone.app is not available.");
+      return undefined;
+    }
+    return app;
+  }
+
   // 以下、ヘルパー関数
   function getStorageValue<T>(
     key: string,
@@ -180,15 +194,15 @@ declare const kintone: Kintone;
     inputField.style.cursor = disabled ? "not-allowed" : "text";
   }
 
-  async function getHiddenAppIds(): Promise<number[]> {
+  function getHiddenAppIds(): number[] {
     return getStorageValue<number[]>(STORAGE_KEY, [], "hidden app IDs");
   }
 
-  async function saveHiddenAppIds(appIds: number[]): Promise<void> {
+  function saveHiddenAppIds(appIds: number[]): void {
     saveStorageValue(STORAGE_KEY, appIds, "hidden app IDs");
   }
 
-  async function getHideAllEnabled(): Promise<boolean> {
+  function getHideAllEnabled(): boolean {
     return getStorageValue<boolean>(
       HIDE_ALL_STORAGE_KEY,
       false,
@@ -196,24 +210,22 @@ declare const kintone: Kintone;
     );
   }
 
-  async function saveHideAllEnabled(enabled: boolean): Promise<void> {
+  function saveHideAllEnabled(enabled: boolean): void {
     saveStorageValue(HIDE_ALL_STORAGE_KEY, enabled, "hide-all setting");
   }
 
   async function setAppDescriptionState(
     targetState: "OPEN" | "CLOSED",
   ): Promise<void> {
-    if (!kintone?.app) {
-      console.warn("[Kintone Dev Tools] kintone.app is not available.");
-      return;
-    }
+    const app = getKintoneApp();
+    if (!app) return;
 
     try {
-      const currentState = await kintone.app.getDescriptionDisplayState();
+      const currentState = await app.getDescriptionDisplayState();
       const expectedState = targetState === "CLOSED" ? "HIDDEN" : "OPEN";
 
       if (currentState !== expectedState) {
-        await kintone.app.showDescription(targetState);
+        await app.showDescription(targetState);
       }
     } catch (error) {
       console.error(
@@ -223,8 +235,20 @@ declare const kintone: Kintone;
     }
   }
 
-  const hideAppDescription = () => setAppDescriptionState("CLOSED");
-  const showAppDescription = () => setAppDescriptionState("OPEN");
+  async function applyDescriptionVisibility(
+    appId: number,
+    hideAllEnabled: boolean,
+    hiddenAppIds: number[],
+  ): Promise<void> {
+    const targetState = shouldHideDescription(
+      appId,
+      hideAllEnabled,
+      hiddenAppIds,
+    )
+      ? "CLOSED"
+      : "OPEN";
+    await setAppDescriptionState(targetState);
+  }
 
   // 以下、UI関連関数
   function createStyledElement<K extends keyof HTMLElementTagNameMap>(
@@ -288,14 +312,21 @@ declare const kintone: Kintone;
   }
 
   function parseAppIds(input: string): number[] {
-    return input
-      .split(",")
-      .map((id) => parseInt(id.trim(), 10))
-      .filter((id) => !Number.isNaN(id) && id > 0);
+    return [
+      ...new Set(
+        input
+          .split(",")
+          .map((id) => parseInt(id.trim(), 10))
+          .filter((id) => !Number.isNaN(id) && id > 0),
+      ),
+    ];
   }
 
   async function showSettingsDialog(): Promise<void> {
     document.getElementById(DIALOG_ID)?.remove();
+
+    const app = getKintoneApp();
+    if (!app) return;
 
     const dialog = createStyledElement("div", UI_STYLES.DIALOG);
     dialog.id = DIALOG_ID;
@@ -307,12 +338,12 @@ declare const kintone: Kintone;
     );
     dialog.appendChild(title);
 
-    const currentAppId = kintone.app.getId()?.toString() ?? "";
-    if (currentAppId) {
+    const currentAppId = app.getId();
+    if (currentAppId != null) {
       const appLabel = createStyledElement(
         "p",
         UI_STYLES.APP_LABEL,
-        `${MESSAGES.CURRENT_APP_ID}${currentAppId}`,
+        `${MESSAGES.CURRENT_APP_ID}${currentAppId.toString()}`,
       );
       dialog.appendChild(appLabel);
     }
@@ -338,8 +369,8 @@ declare const kintone: Kintone;
     inputField.type = "text";
     inputField.placeholder = MESSAGES.INPUT_PLACEHOLDER;
 
-    const previousHiddenAppIds = await getHiddenAppIds();
-    const previousHideAllEnabled = await getHideAllEnabled();
+    const previousHiddenAppIds = getHiddenAppIds();
+    const previousHideAllEnabled = getHideAllEnabled();
     if (previousHiddenAppIds.length > 0) {
       inputField.value = previousHiddenAppIds.join(", ");
     }
@@ -420,7 +451,7 @@ declare const kintone: Kintone;
   async function handleSave(
     inputField: HTMLInputElement,
     hideAllCheckbox: HTMLInputElement,
-    currentAppId: string,
+    currentAppId: number | null,
     previousHiddenAppIds: number[],
     previousHideAllEnabled: boolean,
     dialog: HTMLElement,
@@ -430,26 +461,25 @@ declare const kintone: Kintone;
     const newHiddenAppIds = inputValue ? parseAppIds(inputValue) : [];
 
     try {
-      await saveHiddenAppIds(newHiddenAppIds);
-      await saveHideAllEnabled(hideAllEnabled);
+      saveHiddenAppIds(newHiddenAppIds);
+      saveHideAllEnabled(hideAllEnabled);
 
-      if (currentAppId) {
-        const currentAppIdNum = parseInt(currentAppId, 10);
+      if (currentAppId != null) {
         const wasHidden = shouldHideDescription(
-          currentAppIdNum,
+          currentAppId,
           previousHideAllEnabled,
           previousHiddenAppIds,
         );
         const isNowHidden = shouldHideDescription(
-          currentAppIdNum,
+          currentAppId,
           hideAllEnabled,
           newHiddenAppIds,
         );
 
         if (wasHidden && !isNowHidden) {
-          await showAppDescription();
+          await setAppDescriptionState("OPEN");
         } else if (!wasHidden && isNowHidden) {
-          await hideAppDescription();
+          await setAppDescriptionState("CLOSED");
         }
       }
 
@@ -462,26 +492,37 @@ declare const kintone: Kintone;
   }
 
   async function autoToggleAppDescription(): Promise<void> {
-    const appId = kintone?.app?.getId();
+    const appId = getKintone()?.app?.getId();
     if (appId == null) return;
 
-    const hideAllEnabled = await getHideAllEnabled();
-    const hiddenAppIds = hideAllEnabled ? [] : await getHiddenAppIds();
-    await (shouldHideDescription(appId, hideAllEnabled, hiddenAppIds)
-      ? hideAppDescription()
-      : showAppDescription());
+    const hideAllEnabled = getHideAllEnabled();
+    const hiddenAppIds = hideAllEnabled ? [] : getHiddenAppIds();
+    await applyDescriptionVisibility(appId, hideAllEnabled, hiddenAppIds);
+  }
+
+  function handleAutoToggleEvent(): void {
+    void autoToggleAppDescription();
+  }
+
+  function initialize(attempt = 0): void {
+    const currentKintone = getKintone();
+    if (!currentKintone?.events) {
+      if (attempt >= INIT_RETRY_MAX_ATTEMPTS) {
+        console.warn("[Kintone Dev Tools] kintone.events is not available.");
+        return;
+      }
+      setTimeout(() => initialize(attempt + 1), INIT_RETRY_INTERVAL_MS);
+      return;
+    }
+
+    if (!window.__toggleAppDescriptionInitialized__) {
+      window.__toggleAppDescriptionInitialized__ = true;
+      currentKintone.events.on([...EVENT_TYPES], handleAutoToggleEvent);
+      void autoToggleAppDescription();
+    }
   }
 
   // 以下、初期化
   window.showToggleAppDescriptionSettings = showSettingsDialog;
-
-  if (!window.__toggleAppDescriptionInitialized__) {
-    window.__toggleAppDescriptionInitialized__ = true;
-
-    kintone?.events?.on([...EVENT_TYPES], autoToggleAppDescription);
-
-    return;
-  }
-
-  showSettingsDialog();
+  initialize();
 })();
