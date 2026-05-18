@@ -142,12 +142,7 @@ import type { Kintone } from "./types";
   }
 
   function getKintoneApp(): Kintone["app"] | undefined {
-    const app = getKintone()?.app;
-    if (!app) {
-      console.warn("[Kintone Dev Tools] kintone.app is not available.");
-      return undefined;
-    }
-    return app;
+    return getKintone()?.app;
   }
 
   // 以下、ヘルパー関数
@@ -196,7 +191,20 @@ import type { Kintone } from "./types";
   }
 
   function getHiddenAppIds(): number[] {
-    return getStorageValue<number[]>(STORAGE_KEY, [], "hidden app IDs");
+    const storedValue = getStorageValue<unknown>(
+      STORAGE_KEY,
+      [],
+      "hidden app IDs",
+    );
+    if (!Array.isArray(storedValue)) return [];
+
+    return [
+      ...new Set(
+        storedValue.filter(
+          (id): id is number => Number.isInteger(id) && id > 0,
+        ),
+      ),
+    ];
   }
 
   function saveHiddenAppIds(appIds: number[]): void {
@@ -283,7 +291,22 @@ import type { Kintone } from "./types";
     return button;
   }
 
+  function runWhenDomReady(callback: () => void): void {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", callback, { once: true });
+      return;
+    }
+    callback();
+  }
+
+  function getDialogHost(): HTMLElement | null {
+    return document.body ?? document.documentElement;
+  }
+
   function showSuccessMessage(message: string): void {
+    const host = getDialogHost();
+    if (!host) return;
+
     const successMsg = createStyledElement(
       "div",
       {
@@ -300,7 +323,7 @@ import type { Kintone } from "./types";
       },
       message,
     );
-    document.body.appendChild(successMsg);
+    host.appendChild(successMsg);
     setTimeout(
       () => successMsg.remove(),
       STYLES.TIMING.SUCCESS_MESSAGE_DURATION,
@@ -308,21 +331,32 @@ import type { Kintone } from "./types";
   }
 
   function parseAppIds(input: string): number[] {
+    const tokens = input
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0 && /^\d+$/.test(id));
+
     return [
       ...new Set(
-        input
-          .split(",")
-          .map((id) => parseInt(id.trim(), 10))
-          .filter((id) => !Number.isNaN(id) && id > 0),
+        tokens
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id) && id > 0),
       ),
     ];
   }
 
   async function showSettingsDialog(): Promise<void> {
+    const host = getDialogHost();
+    if (!host) {
+      runWhenDomReady(() => {
+        void showSettingsDialog();
+      });
+      return;
+    }
+
     document.getElementById(DIALOG_ID)?.remove();
 
     const app = getKintoneApp();
-    if (!app) return;
 
     const dialog = createStyledElement("div", UI_STYLES.DIALOG);
     dialog.id = DIALOG_ID;
@@ -334,7 +368,7 @@ import type { Kintone } from "./types";
     );
     dialog.appendChild(title);
 
-    const currentAppId = app.getId();
+    const currentAppId = app?.getId() ?? null;
     if (currentAppId != null) {
       const appLabel = createStyledElement(
         "p",
@@ -440,7 +474,7 @@ import type { Kintone } from "./types";
     bottomContainer.appendChild(checkboxArea);
     bottomContainer.appendChild(buttonContainer);
     dialog.appendChild(bottomContainer);
-    document.body.appendChild(dialog);
+    host.appendChild(dialog);
   }
 
   // 以下、保存・適用関連関数
@@ -633,13 +667,14 @@ import type { Kintone } from "./types";
       window.__toggleAppDescriptionInitialized__ = true;
       events.on([...EVENT_TYPES], handleAutoToggleEvent);
       void autoToggleAppDescription();
-      return;
     }
-
-    void showSettingsDialog();
   }
 
   // 以下、初期化
+  const shouldOpenDialog = window.__toggleAppDescriptionInitialized__ === true;
   window.showToggleAppDescriptionSettings = showSettingsDialog;
   initialize();
+  if (shouldOpenDialog) {
+    void showSettingsDialog();
+  }
 })();
