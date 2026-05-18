@@ -24,8 +24,9 @@ import type { Kintone } from "./types";
     },
   } as const;
 
-  const INIT_RETRY_INTERVAL_MS = 50;
-  const INIT_RETRY_MAX_ATTEMPTS = 200;
+  let isKintoneReadyHookInstalled = false;
+  let isKintoneEventsHookInstalled = false;
+  let isKintoneEventsOnHookInstalled = false;
 
   const UI_STYLES = {
     DIALOG: {
@@ -504,22 +505,143 @@ import type { Kintone } from "./types";
     void autoToggleAppDescription();
   }
 
-  function initialize(attempt = 0): void {
+  function hasEventRegistrar(targetKintone: Kintone | undefined): boolean {
+    return typeof targetKintone?.events?.on === "function";
+  }
+
+  function installEventsOnReadyHook(eventsObject: unknown): void {
+    if (
+      !eventsObject ||
+      isKintoneEventsOnHookInstalled ||
+      typeof (eventsObject as { on?: unknown }).on === "function"
+    ) {
+      return;
+    }
+
+    isKintoneEventsOnHookInstalled = true;
+    const targetEvents = eventsObject as { on?: unknown };
+    let hookedOn = targetEvents.on;
+
+    try {
+      Object.defineProperty(targetEvents, "on", {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return hookedOn;
+        },
+        set(value: unknown) {
+          hookedOn = value;
+          if (typeof value === "function") {
+            Object.defineProperty(targetEvents, "on", {
+              value,
+              writable: true,
+              configurable: true,
+              enumerable: true,
+            });
+            initialize();
+          }
+        },
+      });
+    } catch (error) {
+      console.warn(
+        "[Kintone Dev Tools] Failed to install kintone.events.on ready hook.",
+        error,
+      );
+    }
+  }
+
+  function installEventsReadyHook(targetKintone: Kintone | undefined): void {
+    if (
+      !targetKintone ||
+      isKintoneEventsHookInstalled ||
+      hasEventRegistrar(targetKintone)
+    ) {
+      return;
+    }
+
+    isKintoneEventsHookInstalled = true;
+    let hookedEvents: Kintone["events"] | undefined = targetKintone.events;
+
+    installEventsOnReadyHook(hookedEvents);
+
+    try {
+      Object.defineProperty(targetKintone, "events", {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return hookedEvents;
+        },
+        set(value: Kintone["events"]) {
+          hookedEvents = value;
+
+          if (typeof value?.on === "function") {
+            Object.defineProperty(targetKintone, "events", {
+              value,
+              writable: true,
+              configurable: true,
+              enumerable: true,
+            });
+            initialize();
+            return;
+          }
+
+          installEventsOnReadyHook(value);
+        },
+      });
+    } catch (error) {
+      console.warn(
+        "[Kintone Dev Tools] Failed to install kintone.events ready hook.",
+        error,
+      );
+    }
+  }
+
+  function installKintoneReadyHook(): void {
+    const globalObject = globalThis as { kintone?: Kintone };
+    installEventsReadyHook(globalObject.kintone);
+
+    if (isKintoneReadyHookInstalled) return;
+    isKintoneReadyHookInstalled = true;
+
+    let hookedKintone = globalObject.kintone;
+
+    try {
+      Object.defineProperty(globalObject, "kintone", {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return hookedKintone;
+        },
+        set(value: Kintone | undefined) {
+          hookedKintone = value;
+          installEventsReadyHook(value);
+          initialize();
+        },
+      });
+    } catch (error) {
+      console.warn(
+        "[Kintone Dev Tools] Failed to install kintone ready hook.",
+        error,
+      );
+    }
+  }
+
+  function initialize(): void {
     const currentKintone = getKintone();
-    if (!currentKintone?.events) {
-      if (attempt >= INIT_RETRY_MAX_ATTEMPTS) {
-        console.warn("[Kintone Dev Tools] kintone.events is not available.");
-        return;
-      }
-      setTimeout(() => initialize(attempt + 1), INIT_RETRY_INTERVAL_MS);
+    const events = currentKintone?.events;
+    if (typeof events?.on !== "function") {
+      installKintoneReadyHook();
       return;
     }
 
     if (!window.__toggleAppDescriptionInitialized__) {
       window.__toggleAppDescriptionInitialized__ = true;
-      currentKintone.events.on([...EVENT_TYPES], handleAutoToggleEvent);
+      events.on([...EVENT_TYPES], handleAutoToggleEvent);
       void autoToggleAppDescription();
+      return;
     }
+
+    void showSettingsDialog();
   }
 
   // 以下、初期化
