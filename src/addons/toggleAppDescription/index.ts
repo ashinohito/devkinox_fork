@@ -222,12 +222,7 @@ import type { Kintone } from "./types";
     if (!app) return;
 
     try {
-      const currentState = await app.getDescriptionDisplayState();
-      const expectedState = targetState === "CLOSED" ? "HIDDEN" : "OPEN";
-
-      if (currentState !== expectedState) {
-        await app.showDescription(targetState);
-      }
+      await app.showDescription(targetState);
     } catch (error) {
       console.error(
         `[Kintone Dev Tools] Error setting app description to ${targetState}:`,
