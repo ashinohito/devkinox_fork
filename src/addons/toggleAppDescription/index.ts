@@ -19,7 +19,7 @@ import type { Kintone } from "./types";
       BUTTON_CANCEL_TEXT: "#333",
     },
     TIMING: {
-      SUCCESS_MESSAGE_DURATION: 2000,
+      SUCCESS_MESSAGE_DURATION: 4000,
     },
   } as const;
 
@@ -135,6 +135,11 @@ import type { Kintone } from "./types";
     "app.record.edit.show",
     "app.report.show",
   ] as const;
+
+  type ParsedAppIds = {
+    appIds: number[];
+    invalidTokens: string[];
+  };
 
   type ToggleAppDescriptionSettings = {
     hiddenAppIds: number[];
@@ -341,20 +346,45 @@ import type { Kintone } from "./types";
     );
   }
 
-  // 入力文字列を、使えるアプリID配列に変換する関数
-  function parseAppIds(input: string): number[] {
-    const tokens = input
+  // 入力値をアプリIDへ変換し、無効値は通知用に返す
+  function parseAppIds(input: string): ParsedAppIds {
+    const rawTokens = input
       .split(",")
       .map((id) => id.trim())
-      .filter((id) => id.length > 0 && /^\d+$/.test(id));
+      .filter((id) => id.length > 0);
 
-    return [
-      ...new Set(
-        tokens
-          .map((id) => Number(id))
-          .filter((id) => Number.isInteger(id) && id > 0),
-      ),
-    ];
+    const validAppIds: number[] = [];
+    const invalidTokens: string[] = [];
+
+    for (const token of rawTokens) {
+      if (!/^\d+$/.test(token)) {
+        invalidTokens.push(token);
+        continue;
+      }
+
+      const appId = Number(token);
+      if (!Number.isInteger(appId) || appId <= 0) {
+        invalidTokens.push(token);
+        continue;
+      }
+
+      validAppIds.push(appId);
+    }
+
+    return {
+      appIds: [...new Set(validAppIds)],
+      invalidTokens: [...new Set(invalidTokens)],
+    };
+  }
+
+  // 無効値の表示文を短く整える
+  function formatInvalidTokenSummary(tokens: string[], maxItems = 5): string {
+    const visibleTokens = tokens.slice(0, maxItems).join(", ");
+    if (tokens.length <= maxItems) {
+      return visibleTokens;
+    }
+
+    return `${visibleTokens}, 他${(tokens.length - maxItems).toString()}件`;
   }
 
   // ダイアログ下部（チェックボックス + ボタン）を組み立てる
@@ -560,7 +590,9 @@ import type { Kintone } from "./types";
   ): Promise<void> {
     const inputValue = inputField.value.trim();
     const hideAllEnabled = hideAllCheckbox.checked;
-    const newHiddenAppIds = inputValue ? parseAppIds(inputValue) : [];
+    const { appIds: newHiddenAppIds, invalidTokens } = inputValue
+      ? parseAppIds(inputValue)
+      : { appIds: [], invalidTokens: [] };
 
     try {
       settings.set({
@@ -576,7 +608,11 @@ import type { Kintone } from "./types";
         newHiddenAppIds,
       );
 
-      showSuccessMessage(MESSAGES.SUCCESS_SAVED);
+      const successMessage =
+        invalidTokens.length === 0
+          ? MESSAGES.SUCCESS_SAVED
+          : `${MESSAGES.SUCCESS_SAVED}（無効値を除外: ${formatInvalidTokenSummary(invalidTokens)}）`;
+      showSuccessMessage(successMessage);
       dialog.remove();
     } catch (error) {
       console.error("[Kintone Dev Tools] Failed to save settings:", error);
