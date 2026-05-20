@@ -23,9 +23,9 @@ import type { Kintone } from "./types";
     },
   } as const;
 
-  let isKintoneReadyHookInstalled = false;
-  let isKintoneEventsHookInstalled = false;
-  let isKintoneEventsOnHookInstalled = false;
+  const kintoneReadyHookInstalledTargets = new WeakSet<object>();
+  const eventsReadyHookInstalledTargets = new WeakSet<object>();
+  const eventsOnReadyHookInstalledTargets = new WeakSet<object>();
 
   const UI_STYLES = {
     DIALOG: {
@@ -136,6 +136,11 @@ import type { Kintone } from "./types";
     "app.report.show",
   ] as const;
 
+  type ToggleAppDescriptionSettings = {
+    hiddenAppIds: number[];
+    hideAllEnabled: boolean;
+  };
+
   function getKintone(): Kintone | undefined {
     return (globalThis as { kintone?: Kintone }).kintone;
   }
@@ -192,15 +197,9 @@ import type { Kintone } from "./types";
     inputField.style.cursor = disabled ? "not-allowed" : "text";
   }
 
-  // localStorageに保存されている非表示アプリID一覧を、安全な number配列として取り出す関数
-  function getHiddenAppIds(): number[] {
-    const storedValue = getStorageValue<unknown>(
-      STORAGE_KEY,
-      [],
-      "hidden app IDs",
-    );
+  // localStorage由来の値を、重複なしの正しいアプリID配列へ正規化する
+  function normalizeHiddenAppIds(storedValue: unknown): number[] {
     if (!Array.isArray(storedValue)) return [];
-
     return [
       ...new Set(
         storedValue.filter(
@@ -209,6 +208,42 @@ import type { Kintone } from "./types";
       ),
     ];
   }
+
+  // localStorage の詳細を隠蔽して設定オブジェクトを読む/保存するための API
+  const settings = {
+    // 現在設定を読み込み、UI で使える安全な型へ正規化して返す
+    get(): ToggleAppDescriptionSettings {
+      const storedHiddenAppIds = getStorageValue<unknown>(
+        STORAGE_KEY,
+        [],
+        "hidden app IDs",
+      );
+      const hideAllEnabled = getStorageValue<boolean>(
+        HIDE_ALL_STORAGE_KEY,
+        false,
+        "hide-all setting",
+      );
+
+      return {
+        hiddenAppIds: normalizeHiddenAppIds(storedHiddenAppIds),
+        hideAllEnabled: hideAllEnabled === true,
+      };
+    },
+
+    // 設定全体を同じ窓口で保存する
+    set(nextSettings: ToggleAppDescriptionSettings): void {
+      saveStorageValue(
+        STORAGE_KEY,
+        nextSettings.hiddenAppIds,
+        "hidden app IDs",
+      );
+      saveStorageValue(
+        HIDE_ALL_STORAGE_KEY,
+        nextSettings.hideAllEnabled,
+        "hide-all setting",
+      );
+    },
+  };
 
   // kintoneの説明欄を開く/閉じる処理を実行する関数
   async function setAppDescriptionState(
@@ -458,12 +493,10 @@ import type { Kintone } from "./types";
     inputField.type = "text";
     inputField.placeholder = MESSAGES.INPUT_PLACEHOLDER;
 
-    const previousHiddenAppIds = getHiddenAppIds();
-    const previousHideAllEnabled = getStorageValue<boolean>(
-      HIDE_ALL_STORAGE_KEY,
-      false,
-      "hide-all setting",
-    );
+    const {
+      hiddenAppIds: previousHiddenAppIds,
+      hideAllEnabled: previousHideAllEnabled,
+    } = settings.get();
 
     if (previousHiddenAppIds.length > 0) {
       inputField.value = previousHiddenAppIds.join(", ");
@@ -530,12 +563,10 @@ import type { Kintone } from "./types";
     const newHiddenAppIds = inputValue ? parseAppIds(inputValue) : [];
 
     try {
-      saveStorageValue(STORAGE_KEY, newHiddenAppIds, "hidden app IDs");
-      saveStorageValue(
-        HIDE_ALL_STORAGE_KEY,
+      settings.set({
+        hiddenAppIds: newHiddenAppIds,
         hideAllEnabled,
-        "hide-all setting",
-      );
+      });
 
       await syncCurrentAppDescriptionState(
         currentAppId,
@@ -558,12 +589,7 @@ import type { Kintone } from "./types";
     const appId = getKintone()?.app?.getId();
     if (appId == null) return;
 
-    const hideAllEnabled = getStorageValue<boolean>(
-      HIDE_ALL_STORAGE_KEY,
-      false,
-      "hide-all setting",
-    );
-    const hiddenAppIds = hideAllEnabled ? [] : getHiddenAppIds();
+    const { hiddenAppIds, hideAllEnabled } = settings.get();
     const targetState = shouldHideDescription(
       appId,
       hideAllEnabled,
@@ -576,16 +602,19 @@ import type { Kintone } from "./types";
 
   // kintone.events.on が後から生えてくる場合に備えて、準備完了を監視するフック関数
   function installEventsOnReadyHook(eventsObject: unknown): void {
+    if (!eventsObject || typeof eventsObject !== "object") {
+      return;
+    }
+
+    const targetEvents = eventsObject as { on?: unknown };
     if (
-      !eventsObject ||
-      isKintoneEventsOnHookInstalled ||
-      typeof (eventsObject as { on?: unknown }).on === "function"
+      eventsOnReadyHookInstalledTargets.has(targetEvents) ||
+      typeof targetEvents.on === "function"
     ) {
       return;
     }
 
-    isKintoneEventsOnHookInstalled = true;
-    const targetEvents = eventsObject as { on?: unknown };
+    eventsOnReadyHookInstalledTargets.add(targetEvents);
     let hookedOn = targetEvents.on;
 
     try {
@@ -620,13 +649,13 @@ import type { Kintone } from "./types";
   function installEventsReadyHook(targetKintone: Kintone | undefined): void {
     if (
       !targetKintone ||
-      isKintoneEventsHookInstalled ||
+      eventsReadyHookInstalledTargets.has(targetKintone) ||
       typeof targetKintone.events?.on === "function"
     ) {
       return;
     }
 
-    isKintoneEventsHookInstalled = true;
+    eventsReadyHookInstalledTargets.add(targetKintone);
     let hookedEvents: Kintone["events"] | undefined = targetKintone.events;
 
     installEventsOnReadyHook(hookedEvents);
@@ -668,8 +697,8 @@ import type { Kintone } from "./types";
     const globalObject = globalThis as { kintone?: Kintone };
     installEventsReadyHook(globalObject.kintone);
 
-    if (isKintoneReadyHookInstalled) return;
-    isKintoneReadyHookInstalled = true;
+    if (kintoneReadyHookInstalledTargets.has(globalObject)) return;
+    kintoneReadyHookInstalledTargets.add(globalObject);
 
     let hookedKintone = globalObject.kintone;
 
