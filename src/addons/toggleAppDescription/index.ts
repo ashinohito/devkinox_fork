@@ -140,10 +140,6 @@ import type { Kintone } from "./types";
     return (globalThis as { kintone?: Kintone }).kintone;
   }
 
-  function getKintoneApp(): Kintone["app"] | undefined {
-    return getKintone()?.app;
-  }
-
   /*
    * 以下、ヘルパー関数
    */
@@ -214,30 +210,11 @@ import type { Kintone } from "./types";
     ];
   }
 
-  // 非表示アプリID配列を STORAGE_KEY に保存する専用関数
-  function saveHiddenAppIds(appIds: number[]): void {
-    saveStorageValue(STORAGE_KEY, appIds, "hidden app IDs");
-  }
-
-  // すべてのアプリで説明欄を非表示にする設定を取得する関数
-  function getHideAllEnabled(): boolean {
-    return getStorageValue<boolean>(
-      HIDE_ALL_STORAGE_KEY,
-      false,
-      "hide-all setting",
-    );
-  }
-
-  // 全アプリ非表示設定を保存する専用関数
-  function saveHideAllEnabled(enabled: boolean): void {
-    saveStorageValue(HIDE_ALL_STORAGE_KEY, enabled, "hide-all setting");
-  }
-
   // kintoneの説明欄を開く/閉じる処理を実行する関数
   async function setAppDescriptionState(
     targetState: "OPEN" | "CLOSED",
   ): Promise<void> {
-    const app = getKintoneApp();
+    const app = getKintone()?.app;
     if (!app) return;
 
     try {
@@ -248,22 +225,6 @@ import type { Kintone } from "./types";
         error,
       );
     }
-  }
-
-  // 判定して、最終的に説明欄を開くか閉じるかを適用する関数
-  async function applyDescriptionVisibility(
-    appId: number,
-    hideAllEnabled: boolean,
-    hiddenAppIds: number[],
-  ): Promise<void> {
-    const targetState = shouldHideDescription(
-      appId,
-      hideAllEnabled,
-      hiddenAppIds,
-    )
-      ? "CLOSED"
-      : "OPEN";
-    await setAppDescriptionState(targetState);
   }
 
   /*
@@ -317,14 +278,9 @@ import type { Kintone } from "./types";
     callback();
   }
 
-  // ダイアログを追加する親要素を決める関数
-  function getDialogHost(): HTMLElement | null {
-    return document.body ?? document.documentElement;
-  }
-
   // 保存成功メッセージを一時表示する関数
   function showSuccessMessage(message: string): void {
-    const host = getDialogHost();
+    const host = document.body ?? document.documentElement;
     if (!host) return;
 
     const successMsg = createStyledElement(
@@ -366,9 +322,90 @@ import type { Kintone } from "./types";
     ];
   }
 
+  // ダイアログ下部（チェックボックス + ボタン）を組み立てる
+  function createDialogFooter(
+    dialog: HTMLDivElement,
+    inputField: HTMLInputElement,
+    initialChecked: boolean,
+    currentAppId: number | null,
+    previousHiddenAppIds: number[],
+    previousHideAllEnabled: boolean,
+  ): HTMLDivElement {
+    const bottomContainer = createStyledElement(
+      "div",
+      UI_STYLES.BOTTOM_CONTAINER,
+    );
+
+    const checkboxWrapper = createStyledElement(
+      "label",
+      UI_STYLES.CHECKBOX_WRAPPER,
+    );
+
+    const hideAllCheckbox = createStyledElement("input", {
+      margin: "0",
+      cursor: "pointer",
+    }) as HTMLInputElement;
+    hideAllCheckbox.type = "checkbox";
+    hideAllCheckbox.checked = initialChecked;
+
+    checkboxWrapper.appendChild(hideAllCheckbox);
+    checkboxWrapper.appendChild(
+      document.createTextNode(MESSAGES.HIDE_ALL_CHECKBOX),
+    );
+
+    const checkboxNote = createStyledElement(
+      "p",
+      UI_STYLES.CHECKBOX_NOTE,
+      MESSAGES.HIDE_ALL_NOTE,
+    );
+    checkboxNote.title = MESSAGES.HIDE_ALL_NOTE;
+
+    const checkboxArea = createStyledElement("div", UI_STYLES.CHECKBOX_AREA);
+    checkboxArea.appendChild(checkboxWrapper);
+    checkboxArea.appendChild(checkboxNote);
+
+    hideAllCheckbox.addEventListener("change", () => {
+      updateInputFieldState(inputField, hideAllCheckbox.checked);
+    });
+
+    const buttonContainer = createStyledElement(
+      "div",
+      UI_STYLES.BUTTON_CONTAINER,
+    );
+
+    const closeButton = createButton(
+      MESSAGES.BUTTON_CLOSE,
+      STYLES.COLORS.BUTTON_CANCEL,
+      STYLES.COLORS.BUTTON_CANCEL_TEXT,
+      () => dialog.remove(),
+    );
+
+    const saveButton = createButton(
+      MESSAGES.BUTTON_SAVE,
+      STYLES.COLORS.PRIMARY,
+      "white",
+      () =>
+        handleSave(
+          inputField,
+          hideAllCheckbox,
+          currentAppId,
+          previousHiddenAppIds,
+          previousHideAllEnabled,
+          dialog,
+        ),
+    );
+
+    buttonContainer.appendChild(closeButton);
+    buttonContainer.appendChild(saveButton);
+
+    bottomContainer.appendChild(checkboxArea);
+    bottomContainer.appendChild(buttonContainer);
+    return bottomContainer;
+  }
+
   // 設定ダイアログを組み立てて表示する本体関数
   async function showSettingsDialog(): Promise<void> {
-    const host = getDialogHost();
+    const host = document.body ?? document.documentElement;
     if (!host) {
       runWhenDomReady(() => {
         void showSettingsDialog();
@@ -378,7 +415,7 @@ import type { Kintone } from "./types";
 
     document.getElementById(DIALOG_ID)?.remove();
 
-    const app = getKintoneApp();
+    const app = getKintone()?.app;
 
     const dialog = createStyledElement("div", UI_STYLES.DIALOG);
     dialog.id = DIALOG_ID;
@@ -422,79 +459,27 @@ import type { Kintone } from "./types";
     inputField.placeholder = MESSAGES.INPUT_PLACEHOLDER;
 
     const previousHiddenAppIds = getHiddenAppIds();
-    const previousHideAllEnabled = getHideAllEnabled();
+    const previousHideAllEnabled = getStorageValue<boolean>(
+      HIDE_ALL_STORAGE_KEY,
+      false,
+      "hide-all setting",
+    );
+
     if (previousHiddenAppIds.length > 0) {
       inputField.value = previousHiddenAppIds.join(", ");
     }
     updateInputFieldState(inputField, previousHideAllEnabled);
     dialog.appendChild(inputField);
 
-    const bottomContainer = createStyledElement(
-      "div",
-      UI_STYLES.BOTTOM_CONTAINER,
+    const bottomContainer = createDialogFooter(
+      dialog,
+      inputField,
+      previousHideAllEnabled,
+      currentAppId,
+      previousHiddenAppIds,
+      previousHideAllEnabled,
     );
 
-    const checkboxWrapper = createStyledElement(
-      "label",
-      UI_STYLES.CHECKBOX_WRAPPER,
-    );
-
-    const hideAllCheckbox = createStyledElement("input", {
-      margin: "0",
-      cursor: "pointer",
-    }) as HTMLInputElement;
-    hideAllCheckbox.type = "checkbox";
-    hideAllCheckbox.checked = previousHideAllEnabled;
-
-    const checkboxText = document.createTextNode(MESSAGES.HIDE_ALL_CHECKBOX);
-    checkboxWrapper.appendChild(hideAllCheckbox);
-    checkboxWrapper.appendChild(checkboxText);
-
-    const checkboxNote = createStyledElement(
-      "p",
-      UI_STYLES.CHECKBOX_NOTE,
-      MESSAGES.HIDE_ALL_NOTE,
-    );
-    checkboxNote.title = MESSAGES.HIDE_ALL_NOTE;
-
-    const checkboxArea = createStyledElement("div", UI_STYLES.CHECKBOX_AREA);
-    checkboxArea.appendChild(checkboxWrapper);
-    checkboxArea.appendChild(checkboxNote);
-
-    hideAllCheckbox.addEventListener("change", () => {
-      updateInputFieldState(inputField, hideAllCheckbox.checked);
-    });
-
-    const buttonContainer = createStyledElement(
-      "div",
-      UI_STYLES.BUTTON_CONTAINER,
-    );
-
-    const closeButton = createButton(
-      MESSAGES.BUTTON_CLOSE,
-      STYLES.COLORS.BUTTON_CANCEL,
-      STYLES.COLORS.BUTTON_CANCEL_TEXT,
-      () => dialog.remove(),
-    );
-    const saveButton = createButton(
-      MESSAGES.BUTTON_SAVE,
-      STYLES.COLORS.PRIMARY,
-      "white",
-      () =>
-        handleSave(
-          inputField,
-          hideAllCheckbox,
-          currentAppId,
-          previousHiddenAppIds,
-          previousHideAllEnabled,
-          dialog,
-        ),
-    );
-
-    buttonContainer.appendChild(closeButton);
-    buttonContainer.appendChild(saveButton);
-    bottomContainer.appendChild(checkboxArea);
-    bottomContainer.appendChild(buttonContainer);
     dialog.appendChild(bottomContainer);
     host.appendChild(dialog);
   }
@@ -502,6 +487,34 @@ import type { Kintone } from "./types";
   /*
    * 以下、保存・適用関連関数
    */
+
+  // 保存前後の状態差分を見て、現在の画面だけ説明欄表示状態を同期する
+  async function syncCurrentAppDescriptionState(
+    currentAppId: number | null,
+    previousHiddenAppIds: number[],
+    previousHideAllEnabled: boolean,
+    hideAllEnabled: boolean,
+    newHiddenAppIds: number[],
+  ): Promise<void> {
+    if (currentAppId == null) return;
+
+    const wasHidden = shouldHideDescription(
+      currentAppId,
+      previousHideAllEnabled,
+      previousHiddenAppIds,
+    );
+    const isNowHidden = shouldHideDescription(
+      currentAppId,
+      hideAllEnabled,
+      newHiddenAppIds,
+    );
+
+    if (wasHidden && !isNowHidden) {
+      await setAppDescriptionState("OPEN");
+    } else if (!wasHidden && isNowHidden) {
+      await setAppDescriptionState("CLOSED");
+    }
+  }
 
   // ダイアログの保存ボタンを押したときの本処理(入力取得 → バリデーション/変換 → 保存 → 画面反映 → 成功/失敗通知)
   async function handleSave(
@@ -517,27 +530,20 @@ import type { Kintone } from "./types";
     const newHiddenAppIds = inputValue ? parseAppIds(inputValue) : [];
 
     try {
-      saveHiddenAppIds(newHiddenAppIds);
-      saveHideAllEnabled(hideAllEnabled);
+      saveStorageValue(STORAGE_KEY, newHiddenAppIds, "hidden app IDs");
+      saveStorageValue(
+        HIDE_ALL_STORAGE_KEY,
+        hideAllEnabled,
+        "hide-all setting",
+      );
 
-      if (currentAppId != null) {
-        const wasHidden = shouldHideDescription(
-          currentAppId,
-          previousHideAllEnabled,
-          previousHiddenAppIds,
-        );
-        const isNowHidden = shouldHideDescription(
-          currentAppId,
-          hideAllEnabled,
-          newHiddenAppIds,
-        );
-
-        if (wasHidden && !isNowHidden) {
-          await setAppDescriptionState("OPEN");
-        } else if (!wasHidden && isNowHidden) {
-          await setAppDescriptionState("CLOSED");
-        }
-      }
+      await syncCurrentAppDescriptionState(
+        currentAppId,
+        previousHiddenAppIds,
+        previousHideAllEnabled,
+        hideAllEnabled,
+        newHiddenAppIds,
+      );
 
       showSuccessMessage(MESSAGES.SUCCESS_SAVED);
       dialog.remove();
@@ -552,14 +558,20 @@ import type { Kintone } from "./types";
     const appId = getKintone()?.app?.getId();
     if (appId == null) return;
 
-    const hideAllEnabled = getHideAllEnabled();
+    const hideAllEnabled = getStorageValue<boolean>(
+      HIDE_ALL_STORAGE_KEY,
+      false,
+      "hide-all setting",
+    );
     const hiddenAppIds = hideAllEnabled ? [] : getHiddenAppIds();
-    await applyDescriptionVisibility(appId, hideAllEnabled, hiddenAppIds);
-  }
-
-  // kintoneのイベント登録APIが使える状態かを判定する関数
-  function hasEventRegistrar(targetKintone: Kintone | undefined): boolean {
-    return typeof targetKintone?.events?.on === "function";
+    const targetState = shouldHideDescription(
+      appId,
+      hideAllEnabled,
+      hiddenAppIds,
+    )
+      ? "CLOSED"
+      : "OPEN";
+    await setAppDescriptionState(targetState);
   }
 
   // kintone.events.on が後から生えてくる場合に備えて、準備完了を監視するフック関数
@@ -609,7 +621,7 @@ import type { Kintone } from "./types";
     if (
       !targetKintone ||
       isKintoneEventsHookInstalled ||
-      hasEventRegistrar(targetKintone)
+      typeof targetKintone.events?.on === "function"
     ) {
       return;
     }
