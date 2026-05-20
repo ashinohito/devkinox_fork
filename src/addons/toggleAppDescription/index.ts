@@ -1,7 +1,6 @@
 import type { Kintone } from "./types";
 
 (() => {
-  // 以下、定数
   const DIALOG_ID = "kintone-dev-tools-toggle-app-description-dialog";
   const STORAGE_KEY = "kintone-dev-tools-hidden-app-ids";
   const HIDE_ALL_STORAGE_KEY = "kintone-dev-tools-hide-all-app-descriptions";
@@ -145,7 +144,11 @@ import type { Kintone } from "./types";
     return getKintone()?.app;
   }
 
-  // 以下、ヘルパー関数
+  /*
+   * 以下、ヘルパー関数
+   */
+
+  // ローカルストレージから値を取得する際の共通関数
   function getStorageValue<T>(
     key: string,
     fallbackValue: T,
@@ -160,6 +163,7 @@ import type { Kintone } from "./types";
     }
   }
 
+  // ローカルストレージに値を保存する際の共通関数
   function saveStorageValue<T>(
     key: string,
     value: T,
@@ -173,6 +177,7 @@ import type { Kintone } from "./types";
     }
   }
 
+  // 説明欄を非表示にすべきか判定する関数
   function shouldHideDescription(
     appId: number,
     hideAllEnabled: boolean,
@@ -181,6 +186,7 @@ import type { Kintone } from "./types";
     return hideAllEnabled || hiddenAppIds.includes(appId);
   }
 
+  // 入力欄を有効/無効にしたときの見た目も一緒に切り替える関数
   function updateInputFieldState(
     inputField: HTMLInputElement,
     disabled: boolean,
@@ -190,6 +196,7 @@ import type { Kintone } from "./types";
     inputField.style.cursor = disabled ? "not-allowed" : "text";
   }
 
+  // localStorageに保存されている非表示アプリID一覧を、安全な number配列として取り出す関数
   function getHiddenAppIds(): number[] {
     const storedValue = getStorageValue<unknown>(
       STORAGE_KEY,
@@ -207,10 +214,12 @@ import type { Kintone } from "./types";
     ];
   }
 
+  // 非表示アプリID配列を STORAGE_KEY に保存する専用関数
   function saveHiddenAppIds(appIds: number[]): void {
     saveStorageValue(STORAGE_KEY, appIds, "hidden app IDs");
   }
 
+  // すべてのアプリで説明欄を非表示にする設定を取得する関数
   function getHideAllEnabled(): boolean {
     return getStorageValue<boolean>(
       HIDE_ALL_STORAGE_KEY,
@@ -219,10 +228,12 @@ import type { Kintone } from "./types";
     );
   }
 
+  // 全アプリ非表示設定を保存する専用関数
   function saveHideAllEnabled(enabled: boolean): void {
     saveStorageValue(HIDE_ALL_STORAGE_KEY, enabled, "hide-all setting");
   }
 
+  // kintoneの説明欄を開く/閉じる処理を実行する関数
   async function setAppDescriptionState(
     targetState: "OPEN" | "CLOSED",
   ): Promise<void> {
@@ -239,6 +250,7 @@ import type { Kintone } from "./types";
     }
   }
 
+  // 判定して、最終的に説明欄を開くか閉じるかを適用する関数
   async function applyDescriptionVisibility(
     appId: number,
     hideAllEnabled: boolean,
@@ -254,7 +266,11 @@ import type { Kintone } from "./types";
     await setAppDescriptionState(targetState);
   }
 
-  // 以下、UI関連関数
+  /*
+   * 以下、UI関連関数
+   */
+
+  // タグ名を渡すと、スタイル付きの要素を作って返す共通関数
   function createStyledElement<K extends keyof HTMLElementTagNameMap>(
     tag: K,
     styles: Partial<CSSStyleDeclaration>,
@@ -266,6 +282,7 @@ import type { Kintone } from "./types";
     return element;
   }
 
+  // 共通デザインのボタンを作る関数
   function createButton(
     text: string,
     backgroundColor: string,
@@ -291,6 +308,7 @@ import type { Kintone } from "./types";
     return button;
   }
 
+  // DOMが読み込み済みなら即実行、まだなら読み込み完了後に1回だけ実行する関数
   function runWhenDomReady(callback: () => void): void {
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", callback, { once: true });
@@ -299,10 +317,12 @@ import type { Kintone } from "./types";
     callback();
   }
 
+  // ダイアログを追加する親要素を決める関数
   function getDialogHost(): HTMLElement | null {
     return document.body ?? document.documentElement;
   }
 
+  // 保存成功メッセージを一時表示する関数
   function showSuccessMessage(message: string): void {
     const host = getDialogHost();
     if (!host) return;
@@ -330,6 +350,7 @@ import type { Kintone } from "./types";
     );
   }
 
+  // 入力文字列を、使えるアプリID配列に変換する関数
   function parseAppIds(input: string): number[] {
     const tokens = input
       .split(",")
@@ -345,6 +366,7 @@ import type { Kintone } from "./types";
     ];
   }
 
+  // 設定ダイアログを組み立てて表示する本体関数
   async function showSettingsDialog(): Promise<void> {
     const host = getDialogHost();
     if (!host) {
@@ -477,7 +499,11 @@ import type { Kintone } from "./types";
     host.appendChild(dialog);
   }
 
-  // 以下、保存・適用関連関数
+  /*
+   * 以下、保存・適用関連関数
+   */
+
+  // ダイアログの保存ボタンを押したときの本処理(入力取得 → バリデーション/変換 → 保存 → 画面反映 → 成功/失敗通知)
   async function handleSave(
     inputField: HTMLInputElement,
     hideAllCheckbox: HTMLInputElement,
@@ -521,6 +547,7 @@ import type { Kintone } from "./types";
     }
   }
 
+  // 現在アプリで、設定に応じて説明欄を自動で開閉する実行関数(設定読み込み → 対象アプリ判定 → 反映)
   async function autoToggleAppDescription(): Promise<void> {
     const appId = getKintone()?.app?.getId();
     if (appId == null) return;
@@ -530,14 +557,12 @@ import type { Kintone } from "./types";
     await applyDescriptionVisibility(appId, hideAllEnabled, hiddenAppIds);
   }
 
-  function handleAutoToggleEvent(): void {
-    void autoToggleAppDescription();
-  }
-
+  // kintoneのイベント登録APIが使える状態かを判定する関数
   function hasEventRegistrar(targetKintone: Kintone | undefined): boolean {
     return typeof targetKintone?.events?.on === "function";
   }
 
+  // kintone.events.on が後から生えてくる場合に備えて、準備完了を監視するフック関数
   function installEventsOnReadyHook(eventsObject: unknown): void {
     if (
       !eventsObject ||
@@ -579,6 +604,7 @@ import type { Kintone } from "./types";
     }
   }
 
+  // kintone.events 全体が後から差し替わるケースを監視して、使える状態になったら初期化するフック
   function installEventsReadyHook(targetKintone: Kintone | undefined): void {
     if (
       !targetKintone ||
@@ -625,6 +651,7 @@ import type { Kintone } from "./types";
     }
   }
 
+  // global の kintone 変数そのものが後から入る/差し替わるのを監視する最上位フック
   function installKintoneReadyHook(): void {
     const globalObject = globalThis as { kintone?: Kintone };
     installEventsReadyHook(globalObject.kintone);
@@ -655,6 +682,7 @@ import type { Kintone } from "./types";
     }
   }
 
+  // このアドオン全体の起動エントリ（準備確認 → 必要なら待機フック設置 → 一度だけイベント登録＋即時反映）
   function initialize(): void {
     const currentKintone = getKintone();
     const events = currentKintone?.events;
@@ -665,12 +693,18 @@ import type { Kintone } from "./types";
 
     if (!window.__toggleAppDescriptionInitialized__) {
       window.__toggleAppDescriptionInitialized__ = true;
-      events.on([...EVENT_TYPES], handleAutoToggleEvent);
+      events.on([...EVENT_TYPES], () => {
+        void autoToggleAppDescription();
+      });
       void autoToggleAppDescription();
     }
   }
 
-  // 以下、初期化
+  /*
+   * 以下、初期化
+   */
+
+  // 起動時の最終処理ブロック（公開関数登録 + 初期化 + 必要ならUI再表示）
   const shouldOpenDialog = window.__toggleAppDescriptionInitialized__ === true;
   window.showToggleAppDescriptionSettings = showSettingsDialog;
   initialize();
